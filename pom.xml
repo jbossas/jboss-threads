@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.jboss.threads</groupId>
-    <artifactId>threads</artifactId>
+    <artifactId>jboss-threads</artifactId>
     <packaging>jar</packaging>
     <version>1.0.0.CR1</version>
     <dependencies>
