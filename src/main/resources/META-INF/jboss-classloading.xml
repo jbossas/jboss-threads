@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-
-<classloading xmlns="urn:jboss:classloading:1.0" import-all="false">
-    <capabilities>
-        <module name="jboss-threads" version="1.0.0.CR1"/>
-        <package name="org.jboss.threads" version="1.0.0.CR1"/>
-    </capabilities>
-    <requirements/>
-</classloading>
