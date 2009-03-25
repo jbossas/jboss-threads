@@ -216,6 +216,9 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         final Lock lock = this.lock;
         lock.lockInterruptibly();
         try {
+            if (workers.contains(Thread.currentThread())) {
+                throw new IllegalStateException("Cannot await termination of a thread pool from one of its threads");
+            }
             final long start = System.currentTimeMillis();
             long elapsed = 0L;
             while (! stop && threadCount > 0) {
