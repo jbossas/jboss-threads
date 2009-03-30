@@ -28,6 +28,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ScheduledExecutorService;
 import java.security.PrivilegedAction;
 import java.security.AccessController;
 import java.security.AccessControlContext;
@@ -335,7 +336,7 @@ public final class JBossExecutors {
     }
 
     /**
-     * Wrap an executor with an {@code ExecutorService} instance, which supports all the features of {@code ExecutorService}
+     * Wrap an executor with an {@code ExecutorService} instance which supports all the features of {@code ExecutorService}
      * except for shutting down the executor.
      *
      * @param target the target executor
@@ -346,7 +347,7 @@ public final class JBossExecutors {
     }
 
     /**
-     * Wrap a direct executor with an {@code DirectExecutorService} instance, which supports all the features of {@code ExecutorService}
+     * Wrap a direct executor with an {@code DirectExecutorService} instance which supports all the features of {@code ExecutorService}
      * except for shutting down the executor.
      *
      * @param target the target executor
@@ -354,5 +355,16 @@ public final class JBossExecutors {
      */
     public static DirectExecutorService protectedDirectExecutorService(final DirectExecutor target) {
         return new ProtectedDirectExecutorService(target);
+    }
+
+    /**
+     * Wrap a scheduled executor with a {@code ScheduledExecutorService} instance which supports all the features of
+     * {@code ScheduledExecutorService} except for shutting down the executor.
+     *
+     * @param target the target executor
+     * @return the executor service
+     */
+    public static ScheduledExecutorService protectedScheduledExecutorService(final ScheduledExecutorService target) {
+        return new ProtectedScheduledExecutorService(target);
     }
 }
