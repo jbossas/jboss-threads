@@ -62,7 +62,7 @@ public final class ThreadPoolTestCase extends TestCase {
         final int cnt = 100;
         final CountDownLatch taskUnfreezer = new CountDownLatch(1);
         final CountDownLatch taskFinishLine = new CountDownLatch(cnt);
-        final ExecutorService simpleQueueExecutor = new SimpleQueueExecutor(5, 5, 500L, TimeUnit.MILLISECONDS, new LinkedList<Runnable>(), threadFactory, RejectionPolicy.BLOCK, null);
+        final ExecutorService simpleQueueExecutor = new SimpleQueueExecutor("test-pool", 5, 5, 500L, TimeUnit.MILLISECONDS, new LinkedList<Runnable>(), threadFactory, RejectionPolicy.BLOCK, null);
         for (int i = 0; i < cnt; i ++) {
             simpleQueueExecutor.execute(new SimpleTask(taskUnfreezer, taskFinishLine));
         }
@@ -87,7 +87,7 @@ public final class ThreadPoolTestCase extends TestCase {
         final AtomicBoolean ran = new AtomicBoolean();
 
         final CountDownLatch startLatch = new CountDownLatch(1);
-        final ExecutorService simpleQueueExecutor = new SimpleQueueExecutor(5, 5, 500L, TimeUnit.MILLISECONDS, new LinkedList<Runnable>(), threadFactory, RejectionPolicy.BLOCK, null);
+        final ExecutorService simpleQueueExecutor = new SimpleQueueExecutor("test-pool", 5, 5, 500L, TimeUnit.MILLISECONDS, new LinkedList<Runnable>(), threadFactory, RejectionPolicy.BLOCK, null);
         simpleQueueExecutor.execute(new Runnable() {
             public void run() {
                 try {
@@ -121,7 +121,7 @@ public final class ThreadPoolTestCase extends TestCase {
         final int cnt = queueSize + coreThreads + extraThreads;
         final CountDownLatch taskUnfreezer = new CountDownLatch(1);
         final CountDownLatch taskFinishLine = new CountDownLatch(cnt);
-        final ExecutorService simpleQueueExecutor = new SimpleQueueExecutor(coreThreads, coreThreads + extraThreads, 500L, TimeUnit.MILLISECONDS, new ArrayQueue<Runnable>(queueSize), threadFactory, RejectionPolicy.BLOCK, null);
+        final ExecutorService simpleQueueExecutor = new SimpleQueueExecutor("test-pool", coreThreads, coreThreads + extraThreads, 500L, TimeUnit.MILLISECONDS, new ArrayQueue<Runnable>(queueSize), threadFactory, RejectionPolicy.BLOCK, null);
         for (int i = 0; i < cnt; i ++) {
             simpleQueueExecutor.execute(new SimpleTask(taskUnfreezer, taskFinishLine));
         }

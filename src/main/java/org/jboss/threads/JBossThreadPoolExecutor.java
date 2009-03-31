@@ -27,26 +27,37 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.lang.reflect.Method;
 
 /**
  *
  */
-public final class JBossThreadPoolExecutor extends ThreadPoolExecutor {
+public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements ThreadPoolExecutorMBean {
 
-    public JBossThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue) {
+    private final String name;
+    private final AtomicInteger rejectCount = new AtomicInteger();
+
+    public JBossThreadPoolExecutor(final String name, int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue) {
         super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue);
+        this.name = name;
     }
 
-    public JBossThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory) {
+    public JBossThreadPoolExecutor(final String name, int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory) {
         super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory);
+        this.name = name;
     }
 
-    public JBossThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, RejectedExecutionHandler handler) {
-        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, handler);
+    public JBossThreadPoolExecutor(final String name, int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, RejectedExecutionHandler handler) {
+        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue);
+        setRejectedExecutionHandler(handler);
+        this.name = name;
     }
 
-    public JBossThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory, RejectedExecutionHandler handler) {
-        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory, handler);
+    public JBossThreadPoolExecutor(final String name, int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory, RejectedExecutionHandler handler) {
+        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory);
+        setRejectedExecutionHandler(handler);
+        this.name = name;
     }
 
     public void stop() {
@@ -69,6 +80,97 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor {
         } catch (InterruptedException e) {
             // todo log it?
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static final Method GET_ALLOW_CORE_THREAD_TIMEOUT;
+    private static final Method SET_ALLOW_CORE_THREAD_TIMEOUT;
+
+    static {
+        Method method = null;
+        try {
+            method = ThreadPoolExecutor.class.getMethod("allowsCoreThreadTimeOut");
+        } catch (NoSuchMethodException e) {
+        }
+        GET_ALLOW_CORE_THREAD_TIMEOUT = method;
+        try {
+            method = ThreadPoolExecutor.class.getMethod("allowCoreThreadTimeOut", boolean.class);
+        } catch (NoSuchMethodException e) {
+        }
+        SET_ALLOW_CORE_THREAD_TIMEOUT = method;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public boolean isAllowCoreThreadTimeout() {
+        final Method method = GET_ALLOW_CORE_THREAD_TIMEOUT;
+        try {
+            return method != null ? ((Boolean) method.invoke(this)).booleanValue() : false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public void setAllowCoreThreadTimeout(final boolean allow) {
+        final Method method = SET_ALLOW_CORE_THREAD_TIMEOUT;
+        try {
+            if (method != null) {
+                method.invoke(this, Boolean.valueOf(allow));
+                return;
+            }
+        } catch (Exception e) {
+        }
+        throw new UnsupportedOperationException();
+    }
+
+    public int getMaxPoolSize() {
+        return getMaximumPoolSize();
+    }
+
+    public void setMaxPoolSize(final int newSize) {
+        setMaximumPoolSize(newSize);
+    }
+
+    public long getKeepAliveTime() {
+        return getKeepAliveTime(TimeUnit.MILLISECONDS);
+    }
+
+    public void setKeepAliveTime(final long milliseconds) {
+        setKeepAliveTime(milliseconds, TimeUnit.MILLISECONDS);
+    }
+
+    public int getCurrentPoolSize() {
+        return getPoolSize();
+    }
+
+    public int getRejectedCount() {
+        return rejectCount.get();
+    }
+
+    public RejectedExecutionHandler getRejectedExecutionHandler() {
+        return ((CountingRejectHandler)super.getRejectedExecutionHandler()).getDelegate();
+    }
+
+    public void setRejectedExecutionHandler(final RejectedExecutionHandler handler) {
+        super.setRejectedExecutionHandler(new CountingRejectHandler(handler));
+    }
+
+    private final class CountingRejectHandler implements RejectedExecutionHandler {
+        private final RejectedExecutionHandler delegate;
+
+        public CountingRejectHandler(final RejectedExecutionHandler delegate) {
+            this.delegate = delegate;
+        }
+
+        public RejectedExecutionHandler getDelegate() {
+            return delegate;
+        }
+
+        public void rejectedExecution(final Runnable r, final ThreadPoolExecutor executor) {
+            rejectCount.incrementAndGet();
+            delegate.rejectedExecution(r, executor);
         }
     }
 }

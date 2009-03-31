@@ -40,7 +40,8 @@ import java.util.HashSet;
 /**
  * An executor which uses a regular queue to hold tasks.  The executor may be tuned at runtime in many ways.
  */
-public final class SimpleQueueExecutor extends AbstractExecutorService implements ExecutorService {
+public final class SimpleQueueExecutor extends AbstractExecutorService implements ExecutorService, ThreadPoolExecutorMBean {
+    private final String name;
     private final Lock lock = new ReentrantLock();
     // signal when a task is written to the queue
     private final Condition enqueueCondition = lock.newCondition();
@@ -51,8 +52,10 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
     private final ThreadFactory threadFactory;
 
     // all protected by poolLock...
-    private int coreThreadLimit;
-    private int maxThreadLimit;
+    private int corePoolSize;
+    private int maxPoolSize;
+    private int largestPoolSize;
+    private int rejectCount;
     private boolean allowCoreThreadTimeout;
     private long keepAliveTime;
     private TimeUnit keepAliveTimeUnit;
@@ -67,7 +70,8 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
 
     private Queue<Runnable> queue;
 
-    public SimpleQueueExecutor(final int coreThreadLimit, final int maxThreadLimit, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final RejectionPolicy rejectionPolicy, final Executor handoffExecutor) {
+    public SimpleQueueExecutor(final String name, final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final RejectionPolicy rejectionPolicy, final Executor handoffExecutor) {
+        this.name = name;
         if (threadFactory == null) {
             throw new NullPointerException("threadFactory is null");
         }
@@ -90,8 +94,8 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
             // configurable...
             this.keepAliveTime = keepAliveTime;
             this.keepAliveTimeUnit = keepAliveTimeUnit;
-            this.coreThreadLimit = coreThreadLimit;
-            this.maxThreadLimit = maxThreadLimit;
+            this.corePoolSize = corePoolSize;
+            this.maxPoolSize = maxPoolSize;
             this.queue = queue;
             this.rejectionPolicy = rejectionPolicy;
             this.handoffExecutor = handoffExecutor;
@@ -111,7 +115,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
                     }
                     // Try core thread first, then queue, then extra thread
                     final int count = threadCount;
-                    if (count < coreThreadLimit) {
+                    if (count < corePoolSize) {
                         startNewThread(task);
                         threadCount = count + 1;
                         return;
@@ -123,11 +127,12 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
                         return;
                     }
                     // extra threads?
-                    if (count < maxThreadLimit) {
+                    if (count < maxPoolSize) {
                         startNewThread(task);
                         threadCount = count + 1;
                         return;
                     }
+                    rejectCount++;
                     // how to reject the task...
                     switch (rejectionPolicy) {
                         case ABORT:
@@ -259,30 +264,30 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
-    public int getCoreThreadLimit() {
+    public int getCorePoolSize() {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            return coreThreadLimit;
+            return corePoolSize;
         } finally {
             lock.unlock();
         }
     }
 
-    public void setCoreThreadLimit(final int coreThreadLimit) {
+    public void setCorePoolSize(final int corePoolSize) {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            final int oldLimit = this.coreThreadLimit;
-            if (maxThreadLimit < coreThreadLimit) {
+            final int oldLimit = this.corePoolSize;
+            if (maxPoolSize < corePoolSize) {
                 // don't let the max thread limit be less than the core thread limit.
                 // the called method will signal as needed
-                setMaxThreadLimit(coreThreadLimit);
-            } else if (oldLimit < coreThreadLimit) {
+                setMaxPoolSize(corePoolSize);
+            } else if (oldLimit < corePoolSize) {
                 // we're growing the number of core threads
                 // therefore signal anyone waiting to add tasks; there might be more threads to add
                 removeCondition.signalAll();
-            } else if (oldLimit > coreThreadLimit) {
+            } else if (oldLimit > corePoolSize) {
                 // we're shrinking the number of core threads
                 // therefore signal anyone waiting to remove tasks so the pool can shrink properly
                 enqueueCondition.signalAll();
@@ -290,36 +295,36 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
                 // we aren't changing anything...
                 return;
             }
-            this.coreThreadLimit = coreThreadLimit;
+            this.corePoolSize = corePoolSize;
         } finally {
             lock.unlock();
         }
     }
 
-    public int getMaxThreadLimit() {
+    public int getMaxPoolSize() {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            return maxThreadLimit;
+            return maxPoolSize;
         } finally {
             lock.unlock();
         }
     }
 
-    public void setMaxThreadLimit(final int maxThreadLimit) {
+    public void setMaxPoolSize(final int maxPoolSize) {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            final int oldLimit = this.maxThreadLimit;
-            if (maxThreadLimit < coreThreadLimit) {
+            final int oldLimit = this.maxPoolSize;
+            if (maxPoolSize < corePoolSize) {
                 // don't let the max thread limit be less than the core thread limit.
                 // the called method will signal as needed
-                setCoreThreadLimit(maxThreadLimit);
-            } else if (oldLimit < maxThreadLimit) {
+                setCorePoolSize(maxPoolSize);
+            } else if (oldLimit < maxPoolSize) {
                 // we're growing the number of extra threads
                 // therefore signal anyone waiting to add tasks; there might be more threads to add
                 removeCondition.signalAll();
-            } else if (oldLimit > maxThreadLimit) {
+            } else if (oldLimit > maxPoolSize) {
                 // we're shrinking the number of extra threads
                 // therefore signal anyone waiting to remove tasks so the pool can shrink properly
                 enqueueCondition.signalAll();
@@ -327,7 +332,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
                 // we aren't changing anything...
                 return;
             }
-            this.maxThreadLimit = maxThreadLimit;
+            this.maxPoolSize = maxPoolSize;
         } finally {
             lock.unlock();
         }
@@ -343,16 +348,6 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
-    public TimeUnit getKeepAliveTimeUnit() {
-        final Lock lock = this.lock;
-        lock.lock();
-        try {
-            return keepAliveTimeUnit;
-        } finally {
-            lock.unlock();
-        }
-    }
-
     public void setKeepAliveTime(final long keepAliveTime, final TimeUnit keepAliveTimeUnit) {
         if (keepAliveTimeUnit == null) {
             throw new NullPointerException("keepAliveTimeUnit is null");
@@ -363,11 +358,14 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         final Lock lock = this.lock;
         lock.lock();
         try {
-            this.keepAliveTime = keepAliveTime;
-            this.keepAliveTimeUnit = keepAliveTimeUnit;
+            this.keepAliveTime = keepAliveTimeUnit.convert(keepAliveTime, TimeUnit.MILLISECONDS);
         } finally {
             lock.unlock();
         }
+    }
+
+    public void setKeepAliveTime(final long milliseconds) {
+        setKeepAliveTime(milliseconds, TimeUnit.MILLISECONDS);
     }
 
     public RejectionPolicy getRejectionPolicy() {
@@ -429,6 +427,10 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
     private void startNewThread(final Runnable task) {
         final Thread thread = threadFactory.newThread(new Worker(task));
         workers.add(thread);
+        final int size = workers.size();
+        if (size > largestPoolSize) {
+            largestPoolSize = size;
+        }
         thread.start();
     }
 
@@ -462,9 +464,9 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
                 for (;;) {
                     // these parameters may change on each iteration
                     final int threadCount = this.threadCount;
-                    final int coreThreadLimit = this.coreThreadLimit;
+                    final int coreThreadLimit = corePoolSize;
                     final boolean allowCoreThreadTimeout = this.allowCoreThreadTimeout;
-                    if (stop || threadCount > maxThreadLimit) {
+                    if (stop || threadCount > maxPoolSize) {
                         // too many threads.  Handle a task if there is one, otherwise exit
                         return pollTask();
                     } else if (!allowCoreThreadTimeout && threadCount < coreThreadLimit) {
@@ -500,6 +502,40 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
                     Thread.currentThread().interrupt();
                 }
             }
+        }
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getCurrentPoolSize() {
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            return workers.size();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public int getLargestPoolSize() {
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            return largestPoolSize;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public int getRejectedCount() {
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            return rejectCount;
+        } finally {
+            lock.unlock();
         }
     }
 
