@@ -7,7 +7,14 @@
     <groupId>org.jboss.threads</groupId>
     <artifactId>jboss-threads</artifactId>
     <packaging>jar</packaging>
-    <version>1.0.0.CR2</version>
+
+    <parent>
+        <groupId>org.jboss.threads</groupId>
+        <artifactId>jboss-threads-all</artifactId>
+        <version>1.0.0.CR3</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
     <dependencies>
         <dependency>
             <groupId>junit</groupId>
