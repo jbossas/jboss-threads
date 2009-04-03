@@ -254,18 +254,6 @@ public final class AtomicArray<T, V> {
         }
     }
 
-    private static final Comparator<Comparable> comparator = new Comparator<Comparable>() {
-        @SuppressWarnings({ "unchecked" })
-        public int compare(final Comparable o1, final Comparable o2) {
-            return o1.compareTo(o2);
-        }
-    };
-
-    @SuppressWarnings({ "unchecked" })
-    public static <V extends Comparable<? super V>> Comparator<V> naturalOrder() {
-        return (Comparator<V>) comparator;
-    }
-
     /**
      * Add a value to a sorted array.  Does not check for duplicates.
      *
