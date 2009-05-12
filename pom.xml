@@ -7,7 +7,7 @@
     <groupId>org.jboss.threads</groupId>
     <artifactId>jboss-threads</artifactId>
     <packaging>jar</packaging>
-    <version>1.0.0.CR4</version>
+    <version>1.0.0.GA</version>
     <dependencies>
         <dependency>
             <groupId>junit</groupId>
