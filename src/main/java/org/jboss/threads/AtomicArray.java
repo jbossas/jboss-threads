@@ -27,8 +27,6 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
-import java.util.logging.Handler;
-
 /**
  * Utility for snapshot/copy-on-write arrays.  To use these methods, two things are required: an immutable array
  * stored on a volatile field, and an instance of
@@ -369,8 +367,8 @@ public final class AtomicArray<T, V> {
 
     @SuppressWarnings({ "unchecked" })
     private static <V> V[] newInstance(Class<V> componentType, int length) {
-        if (componentType == Handler.class) {
-            return (V[]) new Handler[length];
+        if (componentType == Object.class) {
+            return (V[]) new Object[length];
         } else {
             return (V[]) Array.newInstance(componentType, length);
         }
