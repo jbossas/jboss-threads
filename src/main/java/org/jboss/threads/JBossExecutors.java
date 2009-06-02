@@ -367,4 +367,21 @@ public final class JBossExecutors {
     public static ScheduledExecutorService protectedScheduledExecutorService(final ScheduledExecutorService target) {
         return new ProtectedScheduledExecutorService(target);
     }
+
+    /**
+     * Wrap a configurable executor with a preconfigured executor.
+     *
+     * @param configurableExecutor the configurable executor
+     * @param taskExecutor the direct executor to wrap tasks in, or {@code null} for none
+     * @param rejectionPolicy the rejection policy for the new executor
+     * @param handoffExecutor the handoff executor to use in the event of a rejected task
+     * @return a configured executor
+     */
+    public static Executor configuredExecutor(final ConfigurableExecutor configurableExecutor, final DirectExecutor taskExecutor, final RejectionPolicy rejectionPolicy, final Executor handoffExecutor) {
+        return new Executor() {
+            public void execute(final Runnable command) {
+                configurableExecutor.execute(command, taskExecutor, rejectionPolicy, handoffExecutor);
+            }
+        };
+    }
 }
