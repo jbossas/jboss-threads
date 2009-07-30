@@ -27,6 +27,26 @@ import java.util.concurrent.Executor;
 /**
  * A direct executor.  Such an executor is required to run the given task in the current thread rather than
  * delegate to a thread pool.
+ *
+ * @see JBossExecutors#directExecutor()
+ * @see JBossExecutors#rejectingExecutor()
+ * @see JBossExecutors#discardingExecutor()
+ * @see JBossExecutors#privilegedExecutor(org.jboss.threads.DirectExecutor, java.security.AccessControlContext)
+ * @see JBossExecutors#contextClassLoaderExecutor(org.jboss.threads.DirectExecutor, java.lang.ClassLoader)
+ * @see JBossExecutors#threadNameExecutor(org.jboss.threads.DirectExecutor, java.lang.String)
+ * @see JBossExecutors#threadNameNotateExecutor(org.jboss.threads.DirectExecutor, java.lang.String)
+ * @see JBossExecutors#exceptionLoggingExecutor(org.jboss.threads.DirectExecutor, java.lang.Object)
+ * @see JBossExecutors#resettingExecutor(org.jboss.threads.DirectExecutor)
  */
 public interface DirectExecutor extends Executor {
+
+    /**
+     * Executes the given command in the calling thread.
+     *
+     * @param command the runnable task
+     *
+     * @throws java.util.concurrent.RejectedExecutionException if this task cannot be accepted for execution
+     * @throws NullPointerException if command is null
+     */
+    void execute(Runnable command);
 }

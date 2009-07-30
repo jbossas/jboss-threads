@@ -25,7 +25,7 @@ package org.jboss.threads;
 import java.util.concurrent.Executor;
 
 /**
- *
+ * An executor upon which tasks may be executed
  */
 public interface ConfigurableExecutor {
     void execute(Runnable task, DirectExecutor taskExecutor, RejectionPolicy policy, Executor handoffExecutor);

@@ -262,6 +262,19 @@ public final class JBossExecutors {
     }
 
     /**
+     * Create a direct executor which delegates tasks to the given executor, and then clears <b>all</b> thread-local
+     * data after each task completes (regardless of outcome).  You must have the {@link RuntimePermission}{@code ("modifyThread")}
+     * permission to use this method.
+     *
+     * @param delegate the delegate direct executor
+     * @return a resetting executor
+     * @throws SecurityException if the caller does not have the {@link RuntimePermission}{@code ("modifyThread")} permission
+     */
+    public static DirectExecutor resettingExecutor(final DirectExecutor delegate) throws SecurityException {
+        return new ResettingDirectExecutor(delegate);
+    }
+
+    /**
      * Create an executor that executes each task in a new thread.
      *
      * @param factory the thread factory to use

@@ -29,7 +29,7 @@ import java.security.PrivilegedAction;
 /**
  * A direct executor which resets the thread-local maps after every task (if possible).
  */
-public class ResettingDirectExecutor implements DirectExecutor {
+final class ResettingDirectExecutor implements DirectExecutor {
     private final DirectExecutor delegate;
 
     private static final Field THREAD_LOCAL_MAP_FIELD;
@@ -53,7 +53,7 @@ public class ResettingDirectExecutor implements DirectExecutor {
             public Field run() {
                 final Field field;
                 try {
-                    field = Thread.class.getDeclaredField("threadLocals");
+                    field = Thread.class.getDeclaredField("inheritableThreadLocals");
                     field.setAccessible(true);
                 } catch (NoSuchFieldException e) {
                     return null;
@@ -68,7 +68,7 @@ public class ResettingDirectExecutor implements DirectExecutor {
      *
      * @param delegate the executor which will actually execute the task
      */
-    public ResettingDirectExecutor(DirectExecutor delegate) {
+    ResettingDirectExecutor(DirectExecutor delegate) {
         final SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(MODIFY_THREAD_PERMISSION);
