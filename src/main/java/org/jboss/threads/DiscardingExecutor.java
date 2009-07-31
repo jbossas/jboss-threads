@@ -22,11 +22,17 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.RejectedExecutionException;
+class DiscardingExecutor implements DirectExecutor {
+    static final DiscardingExecutor INSTANCE = new DiscardingExecutor();
 
-/**
- * An executor which runs a task within the given direct executor.
- */
-public interface WrappingExecutor {
-    void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
+    private DiscardingExecutor() {
+    }
+
+    public void execute(final Runnable command) {
+        // nothing
+    }
+
+    public String toString() {
+        return "Discarding executor";
+    }
 }

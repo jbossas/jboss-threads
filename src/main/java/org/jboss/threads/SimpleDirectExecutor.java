@@ -22,11 +22,18 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.RejectedExecutionException;
+class SimpleDirectExecutor implements DirectExecutor {
 
-/**
- * An executor which runs a task within the given direct executor.
- */
-public interface WrappingExecutor {
-    void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
+    static DirectExecutor INSTANCE = new SimpleDirectExecutor();
+
+    private SimpleDirectExecutor() {
+    }
+
+    public void execute(final Runnable command) {
+        command.run();
+    }
+
+    public String toString() {
+        return "Direct executor";
+    }
 }

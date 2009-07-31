@@ -22,11 +22,23 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 
-/**
- * An executor which runs a task within the given direct executor.
- */
-public interface WrappingExecutor {
-    void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
+class HandoffRejectedExecutionHandler implements RejectedExecutionHandler {
+
+    private final Executor target;
+
+    HandoffRejectedExecutionHandler(final Executor target) {
+        this.target = target;
+    }
+
+    public void rejectedExecution(final Runnable r, final ThreadPoolExecutor executor) {
+        target.execute(r);
+    }
+
+    public String toString() {
+        return String.format("%s -> %s", super.toString(), target);
+    }
 }

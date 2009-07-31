@@ -22,11 +22,21 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.RejectedExecutionException;
+import org.jboss.logging.Logger;
 
-/**
- * An executor which runs a task within the given direct executor.
- */
-public interface WrappingExecutor {
-    void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
+class LoggingUncaughtExceptionHandler implements Thread.UncaughtExceptionHandler {
+
+    private final Logger log;
+
+    LoggingUncaughtExceptionHandler(final Logger log) {
+        this.log = log;
+    }
+
+    public void uncaughtException(final Thread thread, final Throwable throwable) {
+        log.errorf(throwable, "Thread %s threw an uncaught exception", thread);
+    }
+
+    public String toString() {
+        return String.format("%s to \"%s\"", super.toString(), log.getName());
+    }
 }

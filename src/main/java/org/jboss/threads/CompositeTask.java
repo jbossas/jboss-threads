@@ -22,11 +22,21 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.RejectedExecutionException;
+final class CompositeTask implements Runnable {
 
-/**
- * An executor which runs a task within the given direct executor.
- */
-public interface WrappingExecutor {
-    void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
+    private final Runnable[] runnables;
+
+    CompositeTask(final Runnable[] runnables) {
+        this.runnables = runnables;
+    }
+
+    public void run() {
+        for (Runnable runnable : runnables) {
+            runnable.run();
+        }
+    }
+
+    public String toString() {
+        return String.format("%s (%d task(s))", super.toString(), Integer.valueOf(runnables.length));
+    }
 }

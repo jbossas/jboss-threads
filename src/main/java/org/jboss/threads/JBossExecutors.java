@@ -24,11 +24,11 @@ package org.jboss.threads;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.Collection;
 import java.security.PrivilegedAction;
 import java.security.AccessController;
 import java.security.AccessControlContext;
@@ -37,7 +37,7 @@ import java.lang.reflect.Field;
 import org.jboss.logging.Logger;
 
 /**
- *
+ * JBoss thread- and executor-related utility and factory methods.
  */
 public final class JBossExecutors {
 
@@ -54,39 +54,9 @@ public final class JBossExecutors {
         }
     });
 
-    private static final DirectExecutor DIRECT_EXECUTOR = new DirectExecutor() {
-        public void execute(final Runnable command) {
-            command.run();
-        }
-
-        public String toString() {
-            return "Direct executor";
-        }
-    };
-
-    private static final DirectExecutor REJECTING_EXECUTOR = new DirectExecutor() {
-        public void execute(final Runnable command) {
-            throw new RejectedExecutionException();
-        }
-
-        public String toString() {
-            return "Rejecting executor";
-        }
-    };
-
-    private static final DirectExecutor DISCARDING_EXECUTOR = new DirectExecutor() {
-        public void execute(final Runnable command) {
-            // nothing
-        }
-
-        public String toString() {
-            return "Discarding executor";
-        }
-    };
-
-    private static final DirectExecutorService DIRECT_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(DIRECT_EXECUTOR);
-    private static final DirectExecutorService REJECTING_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(REJECTING_EXECUTOR);
-    private static final DirectExecutorService DISCARDING_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(DISCARDING_EXECUTOR);
+    private static final DirectExecutorService DIRECT_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(SimpleDirectExecutor.INSTANCE);
+    private static final DirectExecutorService REJECTING_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(RejectingExecutor.INSTANCE);
+    private static final DirectExecutorService DISCARDING_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(DiscardingExecutor.INSTANCE);
 
     // ==================================================
     // DIRECT EXECUTORS
@@ -99,7 +69,7 @@ public final class JBossExecutors {
      * @return the direct executor instance
      */
     public static DirectExecutor directExecutor() {
-        return DIRECT_EXECUTOR;
+        return SimpleDirectExecutor.INSTANCE;
     }
 
     /**
@@ -118,7 +88,7 @@ public final class JBossExecutors {
      * @return the rejecting executor instance
      */
     public static DirectExecutor rejectingExecutor() {
-        return REJECTING_EXECUTOR;
+        return RejectingExecutor.INSTANCE;
     }
 
     /**
@@ -136,7 +106,7 @@ public final class JBossExecutors {
      * @return the discarding executor instance
      */
     public static DirectExecutor discardingExecutor() {
-        return DISCARDING_EXECUTOR;
+        return DiscardingExecutor.INSTANCE;
     }
 
     /**
@@ -247,18 +217,29 @@ public final class JBossExecutors {
      * @throws SecurityException if the caller does not have the {@link RuntimePermission}{@code ("modifyThread")} permission
      */
     public static DirectExecutor resettingExecutor(final DirectExecutor delegate) throws SecurityException {
-        return initializingExecutor(threadLocalResetter(), delegate);
+        return cleanupExecutor(delegate, threadLocalResetter());
     }
 
     /**
      * Create an executor which runs the given initization task before running its given task.
      *
-     * @param initializer the initialization task
      * @param delegate the delegate direct executor
+     * @param initializer the initialization task
      * @return an initializing executor
      */
-    public static DirectExecutor initializingExecutor(final Runnable initializer, final DirectExecutor delegate) {
+    public static DirectExecutor initializingExecutor(final DirectExecutor delegate, final Runnable initializer) {
         return new InitializingExecutor(initializer, delegate);
+    }
+
+    /**
+     * Create an executor which runs the given cleanup task after running its given task.
+     *
+     * @param delegate the delegate direct executor
+     * @param cleaner the cleanup task
+     * @return an initializing executor
+     */
+    public static DirectExecutor cleanupExecutor(final DirectExecutor delegate, final Runnable cleaner) {
+        return new CleanupExecutor(cleaner, delegate);
     }
 
     // ==================================================
@@ -268,29 +249,36 @@ public final class JBossExecutors {
     /**
      * An executor which delegates to another executor, wrapping each task in a task wrapper.
      *
-     * @param delegate the delegate executor
      * @param taskWrapper the task wrapper
+     * @param delegate the delegate executor
      * @return a wrapping executor
      */
-    public static Executor wrappingExecutor(final Executor delegate, final DirectExecutor taskWrapper) {
-        return new Executor() {
-            public void execute(final Runnable command) {
-                delegate.execute(executorTask(taskWrapper, command));
-            }
-        };
+    public static Executor wrappingExecutor(final DirectExecutor taskWrapper, final Executor delegate) {
+        return executor(wrappingExecutor(delegate), taskWrapper);
     }
 
     /**
-     * An executor which delegates to another executor, wrapping each task in a task wrapper.
+     * Create a wrapping executor for a delegate executor which creates an {@link #executorTask(DirectExecutor, Runnable)} for
+     * each task.
+     *
+     * @param delegate the delegate executor
+     * @return the wrapping executor
+     */
+    public static WrappingExecutor wrappingExecutor(final Executor delegate) {
+        return new DelegatingWrappingExecutor(delegate);
+    }
+
+    /**
+     * An executor which delegates to a wrapping executor, wrapping each task in a task wrapper.
      *
      * @param delegate the delegate executor
      * @param taskWrapper the task wrapper
      * @return a wrapping executor
      */
-    public static Executor wrappingExecutor(final WrappingExecutor delegate, final DirectExecutor taskWrapper) {
+    public static Executor executor(final WrappingExecutor delegate, final DirectExecutor taskWrapper) {
         return new Executor() {
             public void execute(final Runnable command) {
-                delegate.execute(command, taskWrapper);
+                delegate.execute(taskWrapper, command);
             }
         };
     }
@@ -362,11 +350,7 @@ public final class JBossExecutors {
      * @return the new handoff policy implementation
      */
     public static RejectedExecutionHandler handoffPolicy(final Executor target) {
-        return new RejectedExecutionHandler() {
-            public void rejectedExecution(final Runnable r, final ThreadPoolExecutor executor) {
-                target.execute(r);
-            }
-        };
+        return new HandoffRejectedExecutionHandler(target);
     }
 
     // ==================================================
@@ -493,13 +477,17 @@ public final class JBossExecutors {
                 // ignore
             }
         }
-    }
 
-    private static final Runnable NULL_RUNNABLE = new NullRunnable();
+        public String toString() {
+            return "Thread-local resetting Runnable";
+        }
+    }
 
     // ==================================================
     // RUNNABLES
     // ==================================================
+
+    private static final Runnable NULL_RUNNABLE = new NullRunnable();
 
     /**
      * Get the null runnable which does nothing.
@@ -542,11 +530,27 @@ public final class JBossExecutors {
      * @return an encapsulating task
      */
     public static Runnable executorTask(final DirectExecutor executor, final Runnable task) {
-        return new Runnable() {
-            public void run() {
-                executor.execute(task);
-            }
-        };
+        return new ExecutorTask(executor, task);
+    }
+
+    /**
+     * Create a task that is a composite of several other tasks.
+     *
+     * @param runnables the tasks
+     * @return the composite task
+     */
+    public static Runnable compositeTask(final Runnable... runnables) {
+        return new CompositeTask(runnables.clone());
+    }
+
+    /**
+     * Create a task that is a composite of several other tasks.
+     *
+     * @param runnables the tasks
+     * @return the composite task
+     */
+    public static Runnable compositeTask(final Collection<Runnable> runnables) {
+        return new CompositeTask(runnables.toArray(new Runnable[runnables.size()]));
     }
 
     private static void checkAccess(Permission permission) {
@@ -554,5 +558,30 @@ public final class JBossExecutors {
         if (sm != null) {
             sm.checkPermission(permission);
         }
+    }
+
+    // ==================================================
+    // UNCAUGHT EXCEPTION HANDLERS
+    // ==================================================
+
+    /**
+     * Get an uncaught exception handler which logs to the given logger.
+     *
+     * @param log the logger
+     * @return the handler
+     */
+    public static Thread.UncaughtExceptionHandler loggingExceptionHandler(final Logger log) {
+        return new LoggingUncaughtExceptionHandler(log);
+    }
+
+    private static final Thread.UncaughtExceptionHandler LOGGING_HANDLER = loggingExceptionHandler(THREAD_ERROR_LOGGER);
+
+    /**
+     * Get an uncaught exception handler which logs to the default error logger.
+     *
+     * @return the handler
+     */
+    public static Thread.UncaughtExceptionHandler loggingExceptionHandler() {
+        return LOGGING_HANDLER;
     }
 }

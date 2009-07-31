@@ -22,11 +22,25 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.RejectedExecutionException;
+class CleanupExecutor implements DirectExecutor {
 
-/**
- * An executor which runs a task within the given direct executor.
- */
-public interface WrappingExecutor {
-    void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
+    private final Runnable cleaner;
+    private final DirectExecutor delegate;
+
+    CleanupExecutor(final Runnable cleaner, final DirectExecutor delegate) {
+        this.cleaner = cleaner;
+        this.delegate = delegate;
+    }
+
+    public void execute(final Runnable command) {
+        try {
+            delegate.execute(command);
+        } finally {
+            cleaner.run();
+        }
+    }
+
+    public String toString() {
+        return String.format("%s (cleanup task=%s) -> %s", super.toString(), cleaner, delegate);
+    }
 }

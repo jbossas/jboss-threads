@@ -38,6 +38,6 @@ class InitializingExecutor implements DirectExecutor {
     }
 
     public String toString() {
-        return String.format("%s (task=%s) -> %s", super.toString(), initializer, delegate);
+        return String.format("%s (init task=%s) -> %s", super.toString(), initializer, delegate);
     }
 }

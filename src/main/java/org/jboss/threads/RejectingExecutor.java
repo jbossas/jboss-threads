@@ -24,9 +24,17 @@ package org.jboss.threads;
 
 import java.util.concurrent.RejectedExecutionException;
 
-/**
- * An executor which runs a task within the given direct executor.
- */
-public interface WrappingExecutor {
-    void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
+class RejectingExecutor implements DirectExecutor {
+    static final RejectingExecutor INSTANCE = new RejectingExecutor();
+
+    private RejectingExecutor() {
+    }
+
+    public void execute(final Runnable command) {
+        throw new RejectedExecutionException();
+    }
+
+    public String toString() {
+        return "Rejecting executor";
+    }
 }

@@ -35,11 +35,7 @@ class WrappingThreadFactory implements ThreadFactory {
     }
 
     public Thread newThread(final Runnable r) {
-        return delegate.newThread(new Runnable() {
-            public void run() {
-                taskWrapper.execute(r);
-            }
-        });
+        return delegate.newThread(JBossExecutors.executorTask(taskWrapper, r));
     }
 
     public String toString() {

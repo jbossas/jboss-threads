@@ -22,11 +22,21 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.RejectedExecutionException;
+class ExecutorTask implements Runnable {
 
-/**
- * An executor which runs a task within the given direct executor.
- */
-public interface WrappingExecutor {
-    void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
+    private final DirectExecutor executor;
+    private final Runnable task;
+
+    ExecutorTask(final DirectExecutor executor, final Runnable task) {
+        this.executor = executor;
+        this.task = task;
+    }
+
+    public void run() {
+        executor.execute(task);
+    }
+
+    public String toString() {
+        return String.format("%s (Task %s via %s)", super.toString(), task, executor);
+    }
 }

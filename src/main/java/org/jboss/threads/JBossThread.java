@@ -25,7 +25,7 @@ package org.jboss.threads;
 import org.jboss.logging.Logger;
 
 /**
- * A JBoss thread.  Supports extra logging and operations.
+ * A JBoss thread.  Supports logging and extra operations.
  */
 public final class JBossThread extends Thread {
     private static final Logger log = Logger.getLogger(JBossThread.class);

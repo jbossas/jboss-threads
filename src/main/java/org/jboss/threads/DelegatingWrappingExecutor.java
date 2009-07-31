@@ -22,11 +22,22 @@
 
 package org.jboss.threads;
 
+import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
-/**
- * An executor which runs a task within the given direct executor.
- */
-public interface WrappingExecutor {
-    void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
+class DelegatingWrappingExecutor implements WrappingExecutor {
+
+    private final Executor delegate;
+
+    DelegatingWrappingExecutor(final Executor delegate) {
+        this.delegate = delegate;
+    }
+
+    public void execute(final DirectExecutor directExecutor, final Runnable task) throws RejectedExecutionException {
+        delegate.execute(JBossExecutors.executorTask(directExecutor, task));
+    }
+
+    public String toString() {
+        return String.format("%s -> %s", super.toString(), delegate);
+    }
 }
