@@ -22,10 +22,14 @@
 
 package org.jboss.threads;
 
+import org.jboss.logging.Logger;
+
 /**
  *
  */
 public final class JBossThread extends Thread {
+    private static final Logger log = Logger.getLogger(JBossThread.class);
+
     private final InterruptHandler[] interruptHandlers;
 
     public JBossThread(final InterruptHandler[] handlers, final ThreadGroup group, final Runnable target, final String name, final long stackSize) {
@@ -46,18 +50,18 @@ public final class JBossThread extends Thread {
                 for (InterruptHandler interruptHandler : interruptHandlers) try {
                     interruptHandler.handleInterrupt(this);
                 } catch (Throwable t) {
-                    // must ignore
+                    log.errorf(t, "Interrupt handler %s threw an exception", interruptHandler);
                 }
             }
         }
     }
 
     public void run() {
-        // todo log start
+        log.tracef("Starting thread %s", this);
         try {
             super.run();
         } finally {
-            // todo log end
+            log.tracef("Terminating thread %s", this);
         }
     }
 }

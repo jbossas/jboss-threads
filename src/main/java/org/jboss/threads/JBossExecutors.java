@@ -32,17 +32,35 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.security.PrivilegedAction;
 import java.security.AccessController;
 import java.security.AccessControlContext;
+import java.security.Permission;
+import java.lang.reflect.Field;
+import org.jboss.logging.Logger;
 
 /**
  *
  */
 public final class JBossExecutors {
 
+    private static final Logger THREAD_ERROR_LOGGER = Logger.getLogger("org.jboss.threads.errors");
+
     private JBossExecutors() {}
+
+    private static final RuntimePermission MODIFY_THREAD_PERMISSION = new RuntimePermission("modifyThread");
+    private static final RuntimePermission CREATE_PRIVILEGED_THREAD_PERMISSION = new RuntimePermission("createPrivilegedThreads");
+
+    private static final AccessControlContext PRIVILEGED_CONTEXT = AccessController.doPrivileged(new PrivilegedAction<AccessControlContext>() {
+        public AccessControlContext run() {
+            return AccessController.getContext();
+        }
+    });
 
     private static final DirectExecutor DIRECT_EXECUTOR = new DirectExecutor() {
         public void execute(final Runnable command) {
             command.run();
+        }
+
+        public String toString() {
+            return "Direct executor";
         }
     };
 
@@ -50,17 +68,29 @@ public final class JBossExecutors {
         public void execute(final Runnable command) {
             throw new RejectedExecutionException();
         }
+
+        public String toString() {
+            return "Rejecting executor";
+        }
     };
 
     private static final DirectExecutor DISCARDING_EXECUTOR = new DirectExecutor() {
         public void execute(final Runnable command) {
             // nothing
         }
+
+        public String toString() {
+            return "Discarding executor";
+        }
     };
 
     private static final DirectExecutorService DIRECT_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(DIRECT_EXECUTOR);
     private static final DirectExecutorService REJECTING_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(REJECTING_EXECUTOR);
     private static final DirectExecutorService DISCARDING_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(DISCARDING_EXECUTOR);
+
+    // ==================================================
+    // DIRECT EXECUTORS
+    // ==================================================
 
     /**
      * Get the direct executor.  This executor will immediately run any task it is given, and propagate back any
@@ -120,19 +150,120 @@ public final class JBossExecutors {
     }
 
     /**
-     * Get a task that runs the given task through the given direct executor.
+     * Create a direct executor which runs with the privileges given by the supplied {@code AccessControlContext} instance.
      *
-     * @param executor the executor to run the task through
-     * @param task the task to run
-     * @return an encapsulating task
+     * @param delegate the executor to delegate to at the privileged level
+     * @param context the {@code AccessControlContext} to use
+     * @return the new direct executor
      */
-    public static Runnable executorTask(final DirectExecutor executor, final Runnable task) {
-        return new Runnable() {
-            public void run() {
-                executor.execute(task);
-            }
-        };
+    public static DirectExecutor privilegedExecutor(final DirectExecutor delegate, final AccessControlContext context) {
+        return new PrivilegedExecutor(delegate, context);
     }
+
+    /**
+     * Create a direct executor which runs with the privileges given by the current access control context.
+     *
+     * @param delegate the executor to delegate to at the privileged level
+     * @return the new direct executor
+     */
+    public static DirectExecutor privilegedExecutor(final DirectExecutor delegate) {
+        return privilegedExecutor(delegate, AccessController.getContext());
+    }
+
+    /**
+     * Create an executor which executes tasks at the privilege level of this library.
+     * TODO - is this the best approach?
+     *
+     * @param delegate the executor to delegate to at the privileged level
+     * @return the new direct executor
+     */
+    static DirectExecutor highPrivilegeExecutor(final DirectExecutor delegate) {
+        checkAccess(CREATE_PRIVILEGED_THREAD_PERMISSION);
+        return privilegedExecutor(delegate, PRIVILEGED_CONTEXT);
+    }
+
+    /**
+     * Create a direct executor which runs tasks with the given context class loader.
+     *
+     * @param delegate the executor to delegate to
+     * @param taskClassLoader the context class loader to use
+     * @return the new direct executor
+     */
+    public static DirectExecutor contextClassLoaderExecutor(final DirectExecutor delegate, final ClassLoader taskClassLoader) {
+        return new ContextClassLoaderExecutor(taskClassLoader, delegate);
+    }
+
+    /**
+     * Create a direct executor which changes the thread name for the duration of a task.
+     *
+     * @param delegate the executor to delegate to
+     * @param newName the thread name to use
+     * @return the new direct executor
+     */
+    public static DirectExecutor threadNameExecutor(final DirectExecutor delegate, final String newName) {
+        return new ThreadNameExecutor(newName, delegate);
+    }
+
+    /**
+     * Create a direct executor which adds a note to the thread name for the duration of a task.
+     *
+     * @param delegate the executor to delegate to
+     * @param notation the note to use
+     * @return the new direct executor
+     */
+    public static DirectExecutor threadNameNotateExecutor(final DirectExecutor delegate, final String notation) {
+        return new ThreadNameNotatingExecutor(notation, delegate);
+    }
+
+    /**
+     * Create a direct executor which consumes and logs errors that are thrown.
+     *
+     * @param delegate the executor to delegate to
+     * @param log the logger to which exceptions are written at the {@code error} level
+     * @return the new direct executor
+     */
+    public static DirectExecutor exceptionLoggingExecutor(final DirectExecutor delegate, final Logger log) {
+        return new ExceptionLoggingExecutor(delegate, log);
+    }
+
+    /**
+     * Create a direct executor which consumes and logs errors that are thrown to the default thread error category
+     * {@code "org.jboss.threads.errors"}.
+     *
+     * @param delegate the executor to delegate to
+     * @return the new direct executor
+     */
+    public static DirectExecutor exceptionLoggingExecutor(final DirectExecutor delegate) {
+        return exceptionLoggingExecutor(delegate, THREAD_ERROR_LOGGER);
+    }
+
+    /**
+     * Create a direct executor which delegates tasks to the given executor, and then clears <b>all</b> thread-local
+     * data after each task completes (regardless of outcome).  You must have the {@link RuntimePermission}{@code ("modifyThread")}
+     * permission to use this method.
+     *
+     * @param delegate the delegate direct executor
+     * @return a resetting executor
+     * @throws SecurityException if the caller does not have the {@link RuntimePermission}{@code ("modifyThread")} permission
+     */
+    public static DirectExecutor resettingExecutor(final DirectExecutor delegate) throws SecurityException {
+        return initializingExecutor(threadLocalResetter(), delegate);
+    }
+
+    /**
+     * Create an executor which runs the given initization task before running its given task.
+     *
+     * @param initializer the initialization task
+     * @param delegate the delegate direct executor
+     * @return an initializing executor
+     */
+    public static DirectExecutor initializingExecutor(final Runnable initializer, final DirectExecutor delegate) {
+        return new InitializingExecutor(initializer, delegate);
+    }
+
+    // ==================================================
+    // EXECUTORS
+    // ==================================================
 
     /**
      * An executor which delegates to another executor, wrapping each task in a task wrapper.
@@ -150,128 +281,18 @@ public final class JBossExecutors {
     }
 
     /**
-     * Create a direct executor which runs with the privileges given by the supplied {@code AccessControlContext} instance.
+     * An executor which delegates to another executor, wrapping each task in a task wrapper.
      *
-     * @param delegate the executor to delegate to at the privileged level
-     * @param context the {@code AccessControlContext} to use
-     * @return the new direct executor
+     * @param delegate the delegate executor
+     * @param taskWrapper the task wrapper
+     * @return a wrapping executor
      */
-    public static DirectExecutor privilegedExecutor(final DirectExecutor delegate, final AccessControlContext context) {
-        return new DirectExecutor() {
+    public static Executor wrappingExecutor(final WrappingExecutor delegate, final DirectExecutor taskWrapper) {
+        return new Executor() {
             public void execute(final Runnable command) {
-                final SecurityManager sm = System.getSecurityManager();
-                if (sm != null) {
-                    AccessController.doPrivileged(new PrivilegedAction<Void>() {
-                        public Void run() {
-                            delegate.execute(command);
-                            return null;
-                        }
-                    }, context);
-                } else {
-                    delegate.execute(command);
-                }
+                delegate.execute(command, taskWrapper);
             }
         };
-    }
-
-    /**
-     * Create a direct executor which runs tasks with the given context class loader.
-     *
-     * @param delegate the executor to delegate to
-     * @param taskClassLoader the context class loader to use
-     * @return the new direct executor
-     */
-    public static DirectExecutor contextClassLoaderExecutor(final DirectExecutor delegate, final ClassLoader taskClassLoader) {
-        return new DirectExecutor() {
-            public void execute(final Runnable command) {
-                final Thread thr = Thread.currentThread();
-                ClassLoader old = thr.getContextClassLoader();
-                thr.setContextClassLoader(taskClassLoader);
-                try {
-                    delegate.execute(command);
-                } finally {
-                    thr.setContextClassLoader(old);
-                }
-            }
-        };
-    }
-
-    /**
-     * Create a direct executor which changes the thread name for the duration of a task.
-     *
-     * @param delegate the executor to delegate to
-     * @param newName the thread name to use
-     * @return the new direct executor
-     */
-    public static DirectExecutor threadNameExecutor(final DirectExecutor delegate, final String newName) {
-        return new DirectExecutor() {
-            public void execute(final Runnable command) {
-                final Thread thr = Thread.currentThread();
-                final String oldName = thr.getName();
-                thr.setName(newName);
-                try {
-                    delegate.execute(command);
-                } finally {
-                    thr.setName(oldName);
-                }
-            }
-        };
-    }
-
-    /**
-     * Create a direct executor which adds a note to the thread name for the duration of a task.
-     *
-     * @param delegate the executor to delegate to
-     * @param notation the note to use
-     * @return the new direct executor
-     */
-    public static DirectExecutor threadNameNotateExecutor(final DirectExecutor delegate, final String notation) {
-        return new DirectExecutor() {
-            public void execute(final Runnable command) {
-                final Thread thr = Thread.currentThread();
-                final String oldName;
-                oldName = thr.getName();
-                thr.setName(oldName + " (" + notation + ')');
-                try {
-                    delegate.execute(command);
-                } finally {
-                    thr.setName(oldName);
-                }
-            }
-        };
-    }
-
-    /**
-     * Create a direct executor which consumes and logs errors that are thrown.
-     *
-     * @param delegate the executor to delegate to
-     * @param log the logger to which exceptions are written at the {@code error} level
-     * @return the new direct executor
-     */
-    public static DirectExecutor exceptionLoggingExecutor(final DirectExecutor delegate, final Object log) {
-        return new DirectExecutor() {
-            public void execute(final Runnable command) {
-                try {
-                    delegate.execute(command);
-                } catch (Throwable t) {
-                    // todo log it
-                    // log.error(t, "Exception thrown from thread task");
-                }
-            }
-        };
-    }
-
-    /**
-     * Create a direct executor which delegates tasks to the given executor, and then clears <b>all</b> thread-local
-     * data after each task completes (regardless of outcome).  You must have the {@link RuntimePermission}{@code ("modifyThread")}
-     * permission to use this method.
-     *
-     * @param delegate the delegate direct executor
-     * @return a resetting executor
-     * @throws SecurityException if the caller does not have the {@link RuntimePermission}{@code ("modifyThread")} permission
-     */
-    public static DirectExecutor resettingExecutor(final DirectExecutor delegate) throws SecurityException {
-        return new ResettingDirectExecutor(delegate);
     }
 
     /**
@@ -281,12 +302,12 @@ public final class JBossExecutors {
      * @return the executor
      */
     public static Executor threadFactoryExecutor(final ThreadFactory factory) {
-        return new Executor() {
-            public void execute(final Runnable command) {
-                factory.newThread(command).start();
-            }
-        };
+        return new ThreadFactoryExecutor(factory);
     }
+
+    // ==================================================
+    // REJECTED EXECUTION HANDLERS
+    // ==================================================
 
     private static final RejectedExecutionHandler ABORT_POLICY = new ThreadPoolExecutor.AbortPolicy();
     private static final RejectedExecutionHandler CALLER_RUNS_POLICY = new ThreadPoolExecutor.CallerRunsPolicy();
@@ -348,6 +369,10 @@ public final class JBossExecutors {
         };
     }
 
+    // ==================================================
+    // PROTECTED EXECUTOR SERVICE WRAPPERS
+    // ==================================================
+
     /**
      * Wrap an executor with an {@code ExecutorService} instance which supports all the features of {@code ExecutorService}
      * except for shutting down the executor.
@@ -381,20 +406,153 @@ public final class JBossExecutors {
         return new ProtectedScheduledExecutorService(target);
     }
 
+    // ==================================================
+    // THREAD FACTORIES
+    // ==================================================
+
     /**
-     * Wrap a configurable executor with a preconfigured executor.
+     * Create a thread factory which resets all thread-local storage and delegates to the given thread factory.
+     * You must have the {@link RuntimePermission}{@code ("modifyThread")} permission to use this method.
      *
-     * @param configurableExecutor the configurable executor
-     * @param taskExecutor the direct executor to wrap tasks in, or {@code null} for none
-     * @param rejectionPolicy the rejection policy for the new executor
-     * @param handoffExecutor the handoff executor to use in the event of a rejected task
-     * @return a configured executor
+     * @param delegate the delegate thread factory
+     * @return the resetting thread factory
+     * @throws SecurityException if the caller does not have the {@link RuntimePermission}{@code ("modifyThread")}
+     * permission
      */
-    public static Executor configuredExecutor(final ConfigurableExecutor configurableExecutor, final DirectExecutor taskExecutor, final RejectionPolicy rejectionPolicy, final Executor handoffExecutor) {
-        return new Executor() {
-            public void execute(final Runnable command) {
-                configurableExecutor.execute(command, taskExecutor, rejectionPolicy, handoffExecutor);
+    public static ThreadFactory resettingThreadFactory(final ThreadFactory delegate) throws SecurityException {
+        return wrappingThreadFactory(resettingExecutor(directExecutor()), delegate);
+    }
+
+    /**
+     * Creates a thread factory which executes the thread task via the given task wrapping executor.
+     *
+     * @param taskWrapper the task wrapping executor
+     * @param delegate the delegate thread factory
+     * @return the wrapping thread factory
+     */
+    public static ThreadFactory wrappingThreadFactory(final DirectExecutor taskWrapper, final ThreadFactory delegate) {
+        return new WrappingThreadFactory(delegate, taskWrapper);
+    }
+
+    private static final Runnable TCCL_RESETTER = new Runnable() {
+        public void run() {
+            Thread.currentThread().setContextClassLoader(null);
+        }
+
+        public String toString() {
+            return "ContextClassLoader-resetting Runnable";
+        }
+    };
+
+    private static final Runnable THREAD_LOCAL_RESETTER = new ThreadLocalResetter();
+
+    private static final class ThreadLocalResetter implements Runnable {
+        private static final Field THREAD_LOCAL_MAP_FIELD;
+        private static final Field INHERITABLE_THREAD_LOCAL_MAP_FIELD;
+
+        static {
+            THREAD_LOCAL_MAP_FIELD = AccessController.doPrivileged(new PrivilegedAction<Field>() {
+                public Field run() {
+                    final Field field;
+                    try {
+                        field = Thread.class.getDeclaredField("threadLocals");
+                        field.setAccessible(true);
+                    } catch (NoSuchFieldException e) {
+                        return null;
+                    }
+                    return field;
+                }
+            });
+            INHERITABLE_THREAD_LOCAL_MAP_FIELD = AccessController.doPrivileged(new PrivilegedAction<Field>() {
+                public Field run() {
+                    final Field field;
+                    try {
+                        field = Thread.class.getDeclaredField("inheritableThreadLocals");
+                        field.setAccessible(true);
+                    } catch (NoSuchFieldException e) {
+                        return null;
+                    }
+                    return field;
+                }
+            });
+        }
+
+        private ThreadLocalResetter() {
+        }
+
+        public void run() {
+            final Thread thread = Thread.currentThread();
+            clear(thread, THREAD_LOCAL_MAP_FIELD);
+            clear(thread, INHERITABLE_THREAD_LOCAL_MAP_FIELD);
+        }
+
+        private static void clear(final Thread currentThread, final Field field) {
+            try {
+                if (field != null) field.set(currentThread, null);
+            } catch (IllegalAccessException e) {
+                // ignore
+            }
+        }
+    }
+
+    private static final Runnable NULL_RUNNABLE = new NullRunnable();
+
+    // ==================================================
+    // RUNNABLES
+    // ==================================================
+
+    /**
+     * Get the null runnable which does nothing.
+     *
+     * @return the null runnable
+     */
+    public static Runnable nullRunnable() {
+        return NULL_RUNNABLE;
+    }
+
+    /**
+     * Get a {@code Runnable} which, when executed, clears the thread-local storage of the calling thread.
+     * You must have the {@link RuntimePermission}{@code ("modifyThread")}
+     * permission to use this method.
+     *
+     * @return the runnable
+     * @throws SecurityException if the caller does not have the {@link RuntimePermission}{@code ("modifyThread")}
+     * permission
+     */
+    public static Runnable threadLocalResetter() throws SecurityException {
+        checkAccess(MODIFY_THREAD_PERMISSION);
+        return THREAD_LOCAL_RESETTER;
+    }
+
+    /**
+     * Get a {@code Runnable} which, when executed, clears the thread context class loader (if the caller has sufficient
+     * privileges).
+     *
+     * @return the runnable
+     */
+    public static Runnable contextClassLoaderResetter() {
+        return TCCL_RESETTER;
+    }
+
+    /**
+     * Get a task that runs the given task through the given direct executor.
+     *
+     * @param executor the executor to run the task through
+     * @param task the task to run
+     * @return an encapsulating task
+     */
+    public static Runnable executorTask(final DirectExecutor executor, final Runnable task) {
+        return new Runnable() {
+            public void run() {
+                executor.execute(task);
             }
         };
+    }
+
+    private static void checkAccess(Permission permission) {
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(permission);
+        }
     }
 }

@@ -68,4 +68,8 @@ public class ProtectedExecutorService extends AbstractExecutorService implements
     public static ExecutorService directExecutorService() {
         return new ProtectedExecutorService(JBossExecutors.directExecutor());
     }
+
+    public String toString() {
+        return String.format("%s -> %s", super.toString(), delegate);
+    }
 }

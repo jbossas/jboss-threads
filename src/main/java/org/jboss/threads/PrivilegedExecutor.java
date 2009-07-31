@@ -22,11 +22,35 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.Executor;
+import java.security.AccessControlContext;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 
-/**
- * An executor upon which tasks may be executed
- */
-public interface ConfigurableExecutor {
-    void execute(Runnable task, DirectExecutor taskExecutor, RejectionPolicy policy, Executor handoffExecutor);
+class PrivilegedExecutor implements DirectExecutor {
+
+    private final DirectExecutor delegate;
+    private final AccessControlContext context;
+
+    PrivilegedExecutor(final DirectExecutor delegate, final AccessControlContext context) {
+        this.delegate = delegate;
+        this.context = context;
+    }
+
+    public void execute(final Runnable command) {
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                public Void run() {
+                    delegate.execute(command);
+                    return null;
+                }
+            }, context);
+        } else {
+            delegate.execute(command);
+        }
+    }
+
+    public String toString() {
+        return String.format("%s (for %s) -> %s", super.toString(), context, delegate);
+    }
 }
