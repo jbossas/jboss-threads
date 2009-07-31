@@ -37,7 +37,6 @@ public final class JBossThreadFactory implements ThreadFactory {
     private final Boolean daemon;
     private final Integer initialPriority;
     private final List<Appender> nameAppenderList;
-    private final InterruptHandler[] interruptHandlers;
     private final Thread.UncaughtExceptionHandler uncaughtExceptionHandler;
     private final Long stackSize;
 
@@ -88,7 +87,6 @@ public final class JBossThreadFactory implements ThreadFactory {
         this.daemon = daemon;
         this.initialPriority = initialPriority;
         this.uncaughtExceptionHandler = uncaughtExceptionHandler;
-        this.interruptHandlers = interruptHandlers;
         this.stackSize = stackSize;
         final StringBuilder builder = new StringBuilder();
         appendParent(threadGroup, builder);
@@ -162,9 +160,9 @@ public final class JBossThreadFactory implements ThreadFactory {
                 appender.appendTo(nameBuilder, info);
             }
             if (stackSize != null) {
-                thread = new JBossThread(interruptHandlers, threadGroup, target, nameBuilder.toString(), stackSize.longValue());
+                thread = new JBossThread(threadGroup, target, nameBuilder.toString(), stackSize.longValue());
             } else {
-                thread = new JBossThread(interruptHandlers, threadGroup, target, nameBuilder.toString());
+                thread = new JBossThread(threadGroup, target, nameBuilder.toString());
             }
             if (initialPriority != null) thread.setPriority(initialPriority.intValue());
             if (daemon != null) thread.setDaemon(daemon.booleanValue());

@@ -25,7 +25,7 @@ package org.jboss.threads;
 import java.util.concurrent.Executor;
 
 /**
- * A direct executor.  Such an executor is required to run the given task in the current thread rather than
+ * A direct executor.  Such an executor is <b>required</b> to run the given task in the current thread rather than
  * delegate to a thread pool.
  *
  * @see JBossExecutors#directExecutor()
@@ -35,7 +35,8 @@ import java.util.concurrent.Executor;
  * @see JBossExecutors#contextClassLoaderExecutor(org.jboss.threads.DirectExecutor, java.lang.ClassLoader)
  * @see JBossExecutors#threadNameExecutor(org.jboss.threads.DirectExecutor, java.lang.String)
  * @see JBossExecutors#threadNameNotateExecutor(org.jboss.threads.DirectExecutor, java.lang.String)
- * @see JBossExecutors#exceptionLoggingExecutor(org.jboss.threads.DirectExecutor, java.lang.Object)
+ * @see JBossExecutors#exceptionLoggingExecutor(DirectExecutor, org.jboss.logging.Logger)
+ * @see JBossExecutors#exceptionLoggingExecutor(DirectExecutor)
  * @see JBossExecutors#resettingExecutor(org.jboss.threads.DirectExecutor)
  */
 public interface DirectExecutor extends Executor {

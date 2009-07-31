@@ -43,4 +43,8 @@ public class ProtectedExecutor implements Executor {
     public void execute(final Runnable command) {
         delegate.execute(command);
     }
+
+    public String toString() {
+        return String.format("%s -> %s", super.toString(), delegate);
+    }
 }
