@@ -26,7 +26,8 @@ import java.util.concurrent.Executor;
 
 /**
  * A direct executor.  Such an executor is <b>required</b> to run the given task in the current thread rather than
- * delegate to a thread pool.
+ * delegate to a thread pool; furthermore, the task is guaranteed to be terminated when the call to the
+ * {@link #execute(Runnable)} method returns.
  *
  * @see JBossExecutors#directExecutor()
  * @see JBossExecutors#rejectingExecutor()
