@@ -550,8 +550,10 @@ public final class JBossExecutors {
      *
      * @param delegate the delegate runnable
      * @return the wrapping runnable
+     * @throws SecurityException if a security manager exists and the caller does not have the {@code "copyClassLoader"}
+     * {@link RuntimePermission}.
      */
-    public static Runnable classLoaderPreservingTask(final Runnable delegate) {
+    public static Runnable classLoaderPreservingTask(final Runnable delegate) throws SecurityException {
         final SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(COPY_CONTEXT_CLASSLOADER_PERMISSION);
