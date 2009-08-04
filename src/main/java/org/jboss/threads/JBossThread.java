@@ -61,6 +61,7 @@ public final class JBossThread extends Thread {
         try {
             super.interrupt();
         } finally {
+            final InterruptHandler interruptHandler = this.interruptHandler;
             if (interruptHandler != null) {
                 try {
                     interruptHandler.handleInterrupt(this);
