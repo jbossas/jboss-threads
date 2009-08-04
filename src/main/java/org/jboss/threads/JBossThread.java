@@ -32,23 +32,62 @@ public final class JBossThread extends Thread {
 
     private InterruptHandler interruptHandler;
 
+    /**
+     * Construct a new instance.
+     *
+     * @param target the runnable target
+     * @see #Thread(Runnable)
+     */
     public JBossThread(final Runnable target) {
         super(target);
     }
 
+    /**
+     * Construct a new instance.
+     *
+     * @param target the runnable target
+     * @param name the initial thread name
+     * @see #Thread(Runnable, String)
+     */
     public JBossThread(final Runnable target, final String name) {
         super(target, name);
     }
 
-    public JBossThread(final ThreadGroup group, final Runnable target) {
+    /**
+     * Construct a new instance.
+     *
+     * @param group the parent thread group
+     * @param target the runnable target
+     * @see #Thread(ThreadGroup, Runnable)
+     * @throws SecurityException if the current thread cannot create a thread in the specified thread group
+     */
+    public JBossThread(final ThreadGroup group, final Runnable target) throws SecurityException {
         super(group, target);
     }
 
-    public JBossThread(final ThreadGroup group, final Runnable target, final String name) {
+    /**
+     * Construct a new instance.
+     *
+     * @param group the parent thread group
+     * @param target the runnable target
+     * @param name the initial thread name
+     * @see #Thread(ThreadGroup,Runnable,String)
+     * @throws SecurityException if the current thread cannot create a thread in the specified thread group
+     */
+    public JBossThread(final ThreadGroup group, final Runnable target, final String name) throws SecurityException {
         super(group, target, name);
     }
 
-    public JBossThread(final ThreadGroup group, final Runnable target, final String name, final long stackSize) {
+    /**
+     * Construct a new instance.
+     *
+     * @param group the parent thread group
+     * @param target the runnable target
+     * @param name the initial thread name
+     * @see #Thread(ThreadGroup,Runnable,String,long)
+     * @throws SecurityException if the current thread cannot create a thread in the specified thread group
+     */
+    public JBossThread(final ThreadGroup group, final Runnable target, final String name, final long stackSize) throws SecurityException {
         super(group, target, name, stackSize);
     }
 
