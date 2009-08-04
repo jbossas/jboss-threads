@@ -25,6 +25,7 @@ package org.jboss.threads;
 import junit.framework.TestCase;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
 
 /**
  *
@@ -73,19 +74,29 @@ public final class ThreadFactoryTestCase extends TestCase {
     public void testInterruptHandler() throws InterruptedException {
         final AtomicBoolean wasInterrupted = new AtomicBoolean();
         final AtomicBoolean called = new AtomicBoolean();
+        final CountDownLatch latch = new CountDownLatch(1);
         final JBossThreadFactory threadFactory = new JBossThreadFactory(null, null, null, null, null, null);
         final Thread t = threadFactory.newThread(new Runnable() {
             public void run() {
                 synchronized (this) {
+                    final InterruptHandler old = JBossThread.getAndSetInterruptHandler(new InterruptHandler() {
+                        public void handleInterrupt(final Thread thread) {
+                            called.set(true);
+                        }
+                    });
                     try {
+                        latch.countDown();
                         wait();
                     } catch (InterruptedException e) {
                         wasInterrupted.set(true);
+                    } finally {
+                        JBossThread.getAndSetInterruptHandler(old);
                     }
                 }
             }
         });
         t.start();
+        latch.await();
         t.interrupt();
         t.join();
         assertTrue("Was not interrupted", wasInterrupted.get());
