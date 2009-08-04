@@ -35,7 +35,7 @@ import java.util.LinkedList;
  */
 public final class ThreadPoolTestCase extends TestCase {
 
-    private final JBossThreadFactory threadFactory = new JBossThreadFactory(null, null, null, "test thread %p %t", null, null, null);
+    private final JBossThreadFactory threadFactory = new JBossThreadFactory(null, null, null, "test thread %p %t", null, null);
 
     private static final class SimpleTask implements Runnable {
 

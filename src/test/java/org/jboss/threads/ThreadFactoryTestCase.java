@@ -49,12 +49,12 @@ public final class ThreadFactoryTestCase extends TestCase {
         // TODO - skip test for now since it depends on order.
         if (true) return;
         final JBossThreadFactory threadFactory1 = new JBossThreadFactory(new ThreadGroup(new ThreadGroup(new ThreadGroup("one"), "two"), "three"), null,
-                null, "-%p-%%-%t-%g-%f-", null, null, null);
+                null, "-%p-%%-%t-%g-%f-", null, null);
         doTestNamePattern(threadFactory1, 1, 1, 1);
         doTestNamePattern(threadFactory1, 2, 2, 1);
         doTestNamePattern(threadFactory1, 3, 3, 1);
         final JBossThreadFactory threadFactory2 = new JBossThreadFactory(new ThreadGroup(new ThreadGroup(new ThreadGroup("one"), "two"), "three"), null,
-                null, "-%p-%%-%t-%g-%f-", null, null, null);
+                null, "-%p-%%-%t-%g-%f-", null, null);
         doTestNamePattern(threadFactory2, 1, 4, 2);
         doTestNamePattern(threadFactory2, 2, 5, 2);
         doTestNamePattern(threadFactory2, 3, 6, 2);
@@ -64,22 +64,16 @@ public final class ThreadFactoryTestCase extends TestCase {
     }
 
     public void testDaemon() {
-        final JBossThreadFactory threadFactory1 = new JBossThreadFactory(null, Boolean.TRUE, null, "%t", null, null, null);
+        final JBossThreadFactory threadFactory1 = new JBossThreadFactory(null, Boolean.TRUE, null, "%t", null, null);
         assertTrue("Thread is not a daemon thread", threadFactory1.newThread(NULL_RUNNABLE).isDaemon());
-        final JBossThreadFactory threadFactory2 = new JBossThreadFactory(null, Boolean.FALSE, null, "%t", null, null, null);
+        final JBossThreadFactory threadFactory2 = new JBossThreadFactory(null, Boolean.FALSE, null, "%t", null, null);
         assertFalse("Thread should not be a daemon thread", threadFactory2.newThread(NULL_RUNNABLE).isDaemon());
     }
 
     public void testInterruptHandler() throws InterruptedException {
         final AtomicBoolean wasInterrupted = new AtomicBoolean();
         final AtomicBoolean called = new AtomicBoolean();
-        final JBossThreadFactory threadFactory = new JBossThreadFactory(null, null, null, null, new InterruptHandler[] {
-                new InterruptHandler() {
-                    public void handleInterrupt(final Thread thread) {
-                        called.set(true);
-                    }
-                }
-        }, null, null);
+        final JBossThreadFactory threadFactory = new JBossThreadFactory(null, null, null, null, null, null);
         final Thread t = threadFactory.newThread(new Runnable() {
             public void run() {
                 synchronized (this) {
@@ -100,7 +94,7 @@ public final class ThreadFactoryTestCase extends TestCase {
 
     public void testUncaughtHandler() throws InterruptedException {
         final AtomicBoolean called = new AtomicBoolean();
-        final JBossThreadFactory factory = new JBossThreadFactory(null, null, null, null, null, new Thread.UncaughtExceptionHandler() {
+        final JBossThreadFactory factory = new JBossThreadFactory(null, null, null, null, new Thread.UncaughtExceptionHandler() {
             public void uncaughtException(final Thread t, final Throwable e) {
                 called.set(true);
             }
@@ -116,11 +110,11 @@ public final class ThreadFactoryTestCase extends TestCase {
     }
 
     public void testInitialPriority() {
-        assertEquals("Wrong initial thread priority", 1, new JBossThreadFactory(null, null, Integer.valueOf(1), null, null, null, null).newThread(NULL_RUNNABLE).getPriority());
-        assertEquals("Wrong initial thread priority", 2, new JBossThreadFactory(null, null, Integer.valueOf(2), null, null, null, null).newThread(NULL_RUNNABLE).getPriority());
+        assertEquals("Wrong initial thread priority", 1, new JBossThreadFactory(null, null, Integer.valueOf(1), null, null, null).newThread(NULL_RUNNABLE).getPriority());
+        assertEquals("Wrong initial thread priority", 2, new JBossThreadFactory(null, null, Integer.valueOf(2), null, null, null).newThread(NULL_RUNNABLE).getPriority());
         final ThreadGroup grp = new ThreadGroup("blah");
         grp.setMaxPriority(5);
-        assertEquals("Wrong initial thread priority", 5, new JBossThreadFactory(grp, null, Integer.valueOf(10), null, null, null, null).newThread(NULL_RUNNABLE).getPriority());
-        assertEquals("Wrong initial thread priority", 1, new JBossThreadFactory(grp, null, Integer.valueOf(1), null, null, null, null).newThread(NULL_RUNNABLE).getPriority());
+        assertEquals("Wrong initial thread priority", 5, new JBossThreadFactory(grp, null, Integer.valueOf(10), null, null, null).newThread(NULL_RUNNABLE).getPriority());
+        assertEquals("Wrong initial thread priority", 1, new JBossThreadFactory(grp, null, Integer.valueOf(1), null, null, null).newThread(NULL_RUNNABLE).getPriority());
     }
 }
