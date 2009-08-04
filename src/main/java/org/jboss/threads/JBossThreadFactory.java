@@ -29,7 +29,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- *
+ * A factory for {@link JBossThread} instances.
  */
 public final class JBossThreadFactory implements ThreadFactory {
     private final ThreadGroup threadGroup;
@@ -48,6 +48,16 @@ public final class JBossThreadFactory implements ThreadFactory {
     private static final AtomicLong globalThreadIndexSequence = new AtomicLong(1L);
     private static final AtomicLong factoryIndexSequence = new AtomicLong(1L);
 
+    /**
+     * Construct a new instance.
+     *
+     * @param threadGroup the thread group to assign threads to by default (may be {@code null})
+     * @param daemon whether the created threads should be daemon threads, or {@code null} to use the thread group's setting
+     * @param initialPriority the initial thread priority, or {@code null} to use the thread group's setting
+     * @param namePattern the name pattern string
+     * @param uncaughtExceptionHandler the uncaught exception handler, if any
+     * @param stackSize the JVM-specific stack size, or {@code null} to leave it unspecified
+     */
     public JBossThreadFactory(ThreadGroup threadGroup, final Boolean daemon, final Integer initialPriority, String namePattern, final Thread.UncaughtExceptionHandler uncaughtExceptionHandler, final Long stackSize) {
         if (threadGroup == null) {
             final SecurityManager sm = System.getSecurityManager();
