@@ -47,6 +47,7 @@ public final class JBossExecutors {
 
     private static final RuntimePermission MODIFY_THREAD_PERMISSION = new RuntimePermission("modifyThread");
     private static final RuntimePermission CREATE_PRIVILEGED_THREAD_PERMISSION = new RuntimePermission("createPrivilegedThreads");
+    private static final RuntimePermission COPY_CONTEXT_CLASSLOADER_PERMISSION = new RuntimePermission("copyClassLoader");
 
     private static final AccessControlContext PRIVILEGED_CONTEXT = AccessController.doPrivileged(new PrivilegedAction<AccessControlContext>() {
         public AccessControlContext run() {
@@ -541,6 +542,82 @@ public final class JBossExecutors {
      */
     public static Runnable compositeTask(final Runnable... runnables) {
         return new CompositeTask(runnables.clone());
+    }
+
+    /**
+     * Create a task that delegates to the given task, preserving the context classloader which was in effect when
+     * this method was invoked.
+     *
+     * @param delegate the delegate runnable
+     * @return the wrapping runnable
+     */
+    public static Runnable classLoaderPreservingTask(final Runnable delegate) {
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(COPY_CONTEXT_CLASSLOADER_PERMISSION);
+        }
+        final ClassLoader loader = getContextClassLoader(Thread.currentThread());
+        return new ContextClassLoaderSavingRunnable(loader, delegate);
+    }
+
+    /**
+     * Privileged method to get the context class loader of the given thread.
+     *
+     * @param thread the thread to introspect
+     * @return the context class loader
+     */
+    static ClassLoader getContextClassLoader(final Thread thread) {
+        if (System.getSecurityManager() != null) {
+            return AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
+                public ClassLoader run() {
+                    return thread.getContextClassLoader();
+                }
+            });
+        } else {
+            return thread.getContextClassLoader();
+        }
+    }
+
+    /**
+     * Privileged method to get and set the context class loader of the given thread.
+     *
+     * @param thread the thread to introspect
+     * @param newClassLoader the new context class loader
+     * @return the old context class loader
+     */
+    static ClassLoader getAndSetContextClassLoader(final Thread thread, final ClassLoader newClassLoader) {
+        if (System.getSecurityManager() != null) {
+            return AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
+                public ClassLoader run() {
+                    final ClassLoader old = thread.getContextClassLoader();
+                    thread.setContextClassLoader(newClassLoader);
+                    return old;
+                }
+            });
+        } else {
+            final ClassLoader old = thread.getContextClassLoader();
+            thread.setContextClassLoader(newClassLoader);
+            return old;
+        }
+    }
+
+    /**
+     * Privileged method to set the context class loader of the given thread.
+     *
+     * @param thread the thread to introspect
+     * @param classLoader the new context class loader
+     */
+    static void setContextClassLoader(final Thread thread, final ClassLoader classLoader) {
+        if (System.getSecurityManager() != null) {
+            AccessController.doPrivileged(new PrivilegedAction<Void>() {
+                public Void run() {
+                    thread.setContextClassLoader(classLoader);
+                    return null;
+                }
+            });
+        } else {
+            thread.setContextClassLoader(classLoader);
+        }
     }
 
     /**
