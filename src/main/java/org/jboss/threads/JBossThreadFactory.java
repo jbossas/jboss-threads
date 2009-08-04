@@ -49,7 +49,8 @@ public final class JBossThreadFactory implements ThreadFactory {
     private static final AtomicLong factoryIndexSequence = new AtomicLong(1L);
 
     /**
-     * Construct a new instance.
+     * Construct a new instance.  The access control context of the calling thread will be the one used to create
+     * new threads if a security manager is installed.
      *
      * @param threadGroup the thread group to assign threads to by default (may be {@code null})
      * @param daemon whether the created threads should be daemon threads, or {@code null} to use the thread group's setting
