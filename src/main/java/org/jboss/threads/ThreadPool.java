@@ -62,7 +62,7 @@ public final class ThreadPool {
         runningThreads = 0;
     }
 
-    public void executeBlocking(final Runnable runnable, final DirectExecutor taskExecutor) throws InterruptedException {
+    public void executeBlocking(final DirectExecutor taskExecutor, final Runnable runnable) throws InterruptedException {
         if (runnable == null) {
             throw new NullPointerException("runnable is null");
         }

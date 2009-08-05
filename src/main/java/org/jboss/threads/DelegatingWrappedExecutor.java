@@ -23,15 +23,18 @@
 package org.jboss.threads;
 
 import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
 
-class DelegatingWrappingExecutor extends ProtectedExecutor implements WrappingExecutor {
+class DelegatingWrappedExecutor implements Executor {
 
-    DelegatingWrappingExecutor(final Executor delegate) {
-        super(delegate);
+    private final WrappingExecutor delegate;
+    private final DirectExecutor taskWrapper;
+
+    DelegatingWrappedExecutor(final WrappingExecutor delegate, final DirectExecutor taskWrapper) {
+        this.delegate = delegate;
+        this.taskWrapper = taskWrapper;
     }
 
-    public void execute(final DirectExecutor directExecutor, final Runnable task) throws RejectedExecutionException {
-        execute(JBossExecutors.executorTask(directExecutor, task));
+    public void execute(final Runnable command) {
+        delegate.execute(taskWrapper, command);
     }
 }

@@ -25,6 +25,7 @@ package org.jboss.threads;
 import java.security.AccessControlContext;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
+import java.security.ProtectionDomain;
 
 class PrivilegedExecutor implements DirectExecutor {
 
@@ -34,6 +35,11 @@ class PrivilegedExecutor implements DirectExecutor {
     PrivilegedExecutor(final DirectExecutor delegate, final AccessControlContext context) {
         this.delegate = delegate;
         this.context = context;
+    }
+
+    PrivilegedExecutor(final DirectExecutor delegate, final Class<?> targetClass) throws SecurityException {
+        this.delegate = delegate;
+        context = new AccessControlContext(new ProtectionDomain[] { targetClass.getProtectionDomain() });
     }
 
     public void execute(final Runnable command) {

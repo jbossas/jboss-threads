@@ -158,7 +158,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RejectedExecutionException("Thread interrupted");
+            throw new ExecutionInterruptedException("Thread interrupted");
         }
     }
 

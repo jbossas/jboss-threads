@@ -23,10 +23,27 @@
 package org.jboss.threads;
 
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.Executor;
 
 /**
  * An executor which runs a task within the given direct executor.
  */
-public interface WrappingExecutor {
+public interface WrappingExecutor extends Executor {
+
+    /**
+     * Run the given task directly, without a wrapper.
+     *
+     * @param task the task to run
+     * @throws RejectedExecutionException if the execution was rejected for some reason
+     */
+    void execute(Runnable task) throws RejectedExecutionException;
+
+    /**
+     * Run the given task within the given wrapper.
+     *
+     * @param directExecutor the task wrapper
+     * @param task the task to run
+     * @throws RejectedExecutionException if the execution was rejected for some reason
+     */
     void execute(DirectExecutor directExecutor, Runnable task) throws RejectedExecutionException;
 }

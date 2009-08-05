@@ -132,6 +132,18 @@ public final class JBossExecutors {
     }
 
     /**
+     * Create a direct executor which runs with the privileges given by the supplied class' protection domain.
+     *
+     * @param delegate the executor to delegate to at the privileged level
+     * @param targetClass the target class whose protection domain should be used
+     * @return the new direct executor
+     * @throws SecurityException if there is a security manager installed and the caller lacks the {@code "getProtectionDomain"} {@link RuntimePermission}
+     */
+    public static DirectExecutor privilegedExecutor(final DirectExecutor delegate, final Class<?> targetClass) throws SecurityException {
+        return new PrivilegedExecutor(delegate, targetClass);
+    }
+
+    /**
      * Create a direct executor which runs with the privileges given by the current access control context.
      *
      * @param delegate the executor to delegate to at the privileged level
@@ -277,11 +289,7 @@ public final class JBossExecutors {
      * @return a wrapping executor
      */
     public static Executor executor(final WrappingExecutor delegate, final DirectExecutor taskWrapper) {
-        return new Executor() {
-            public void execute(final Runnable command) {
-                delegate.execute(taskWrapper, command);
-            }
-        };
+        return new DelegatingWrappedExecutor(delegate, taskWrapper);
     }
 
     /**
