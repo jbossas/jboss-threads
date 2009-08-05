@@ -105,6 +105,7 @@ public final class JBossThreadFactory implements ThreadFactory {
         } else {
             thread = new JBossThread(threadGroup, target);
         }
+        thread.setThreadNameInfo(nameInfo);
         thread.setName(nameInfo.format(thread, namePattern));
         if (initialPriority != null) thread.setPriority(initialPriority.intValue());
         if (daemon != null) thread.setDaemon(daemon.booleanValue());

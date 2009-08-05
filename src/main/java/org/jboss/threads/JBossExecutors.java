@@ -188,6 +188,18 @@ public final class JBossExecutors {
     }
 
     /**
+     * Create a direct executor which changes the thread name for the duration of a task using a formatted name.
+     * The thread must be a {@link JBossThread}.
+     *
+     * @param delegate the executor to delegate to
+     * @param newName the thread name to use
+     * @return the new direct executor
+     */
+    public static DirectExecutor threadFormattedNameExecutor(final DirectExecutor delegate, final String newName) {
+        return new ThreadFormattedNameExecutor(newName, delegate);
+    }
+
+    /**
      * Create a direct executor which adds a note to the thread name for the duration of a task.
      *
      * @param delegate the executor to delegate to
@@ -640,7 +652,7 @@ public final class JBossExecutors {
         return new CompositeTask(runnables.toArray(new Runnable[runnables.size()]));
     }
 
-    private static void checkAccess(Permission permission) {
+    static void checkAccess(Permission permission) {
         final SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
             sm.checkPermission(permission);

@@ -31,6 +31,7 @@ public final class JBossThread extends Thread {
     private static final Logger log = Logger.getLogger(JBossThread.class);
 
     private InterruptHandler interruptHandler;
+    private ThreadNameInfo threadNameInfo;
 
     /**
      * Construct a new instance.
@@ -178,5 +179,25 @@ public final class JBossThread extends Thread {
         } finally {
             thread.interruptHandler = newInterruptHandler;
         }
+    }
+
+    /**
+     * Get the thread name information.  This includes information about the thread's sequence number and so forth.
+     *
+     * @return the thread name info
+     */
+    public ThreadNameInfo getThreadNameInfo() {
+        return threadNameInfo;
+    }
+
+    /**
+     * Set the thread name information.  This includes information about the thread's sequence number and so forth.
+     *
+     * @param threadNameInfo the new thread name info
+     * @throws SecurityException if the calling thread is not allowed to modify this thread
+     */
+    public void setThreadNameInfo(final ThreadNameInfo threadNameInfo) throws SecurityException {
+        checkAccess();
+        this.threadNameInfo = threadNameInfo;
     }
 }
