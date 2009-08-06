@@ -136,6 +136,7 @@ public final class Dependency {
                     // clear stuff out in case some stupid executor holds on to the runnable
                     dependents = null;
                     runnable = null;
+                    runner = null;
                     state = ok ? State.DONE : State.FAILED;
                 }
                 if (ok) {
