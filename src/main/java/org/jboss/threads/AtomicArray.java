@@ -41,19 +41,19 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 public final class AtomicArray<T, V> {
 
     private final AtomicReferenceFieldUpdater<T, V[]> updater;
-    private final Class<V> componentType;
     private final V[] emptyArray;
+    private final Creator<V> creator;
 
     /**
      * Construct an instance.
      *
      * @param updater the field updater
-     * @param componentType the component class
+     * @param creator the array creator
      */
-    public AtomicArray(AtomicReferenceFieldUpdater<T, V[]> updater, Class<V> componentType) {
+    private AtomicArray(AtomicReferenceFieldUpdater<T, V[]> updater, Creator<V> creator) {
         this.updater = updater;
-        this.componentType = componentType;
-        emptyArray = newInstance(componentType, 0);
+        this.creator = creator;
+        emptyArray = creator.create(0);
     }
 
     /**
@@ -66,7 +66,20 @@ public final class AtomicArray<T, V> {
      * @return the new instance
      */
     public static <T, V> AtomicArray<T, V> create(AtomicReferenceFieldUpdater<T, V[]> updater, Class<V> componentType) {
-        return new AtomicArray<T,V>(updater, componentType);
+        return new AtomicArray<T,V>(updater, new ReflectCreator<V>(componentType));
+    }
+
+    /**
+     * Convenience method to create an instance.
+     *
+     * @param updater the field updater
+     * @param creator the array creator
+     * @param <T> the type which contains the target field
+     * @param <V> the array value type
+     * @return the new instance
+     */
+    public static <T, V> AtomicArray<T, V> create(AtomicReferenceFieldUpdater<T, V[]> updater, Creator<V> creator) {
+        return new AtomicArray<T,V>(updater, creator);
     }
 
     /**
@@ -99,8 +112,8 @@ public final class AtomicArray<T, V> {
     }
 
     @SuppressWarnings({ "unchecked" })
-    private static <V> V[] copyOf(final Class<V> componentType, V[] old, int newLen) {
-        final V[] target = newInstance(componentType, newLen);
+    private static <V> V[] copyOf(final AtomicArray.Creator<V> creator, V[] old, int newLen) {
+        final V[] target = creator.create(newLen);
         System.arraycopy(old, 0, target, 0, Math.min(old.length, newLen));
         return target;
     }
@@ -116,7 +129,7 @@ public final class AtomicArray<T, V> {
         for (;;) {
             final V[] oldVal = updater.get(instance);
             final int oldLen = oldVal.length;
-            final V[] newVal = copyOf(componentType, oldVal, oldLen + 1);
+            final V[] newVal = copyOf(creator, oldVal, oldLen + 1);
             newVal[oldLen] = value;
             if (updater.compareAndSet(instance, oldVal, newVal)) {
                 return;
@@ -151,7 +164,7 @@ public final class AtomicArray<T, V> {
                     }
                 }
             }
-            final V[] newVal = copyOf(componentType, oldVal, oldLen + 1);
+            final V[] newVal = copyOf(creator, oldVal, oldLen + 1);
             newVal[oldLen] = value;
             if (updater.compareAndSet(instance, oldVal, newVal)) {
                 return true;
@@ -195,7 +208,7 @@ public final class AtomicArray<T, V> {
                 if (index == -1) {
                     return false;
                 }
-                final V[] newVal = newInstance(componentType, oldLen - 1);
+                final V[] newVal = creator.create(oldLen - 1);
                 System.arraycopy(oldVal, 0, newVal, 0, index);
                 System.arraycopy(oldVal, index + 1, newVal, index, oldLen - index - 1);
                 if (updater.compareAndSet(instance, oldVal, newVal)) {
@@ -247,7 +260,7 @@ public final class AtomicArray<T, V> {
                 if (newLen == 0) {
                     newVal = emptyArray;
                 } else {
-                    newVal = newInstance(componentType, newLen);
+                    newVal = creator.create(newLen);
                     for (int i = 0, j = 0; i < oldLen; i ++) {
                         if (! removeSlots[i]) {
                             newVal[j++] = oldVal[i];
@@ -274,7 +287,7 @@ public final class AtomicArray<T, V> {
             final V[] oldVal = updater.get(instance);
             final int oldLen = oldVal.length;
             final int pos = insertionPoint(Arrays.binarySearch(oldVal, value, comparator));
-            final V[] newVal = newInstance(componentType, oldLen + 1);
+            final V[] newVal = creator.create(oldLen + 1);
             System.arraycopy(oldVal, 0, newVal, 0, pos);
             newVal[pos] = value;
             System.arraycopy(oldVal, pos, newVal, pos + 1, oldLen - pos);
@@ -300,7 +313,7 @@ public final class AtomicArray<T, V> {
             if (pos < 0) {
                 return false;
             }
-            final V[] newVal = newInstance(componentType, oldLen + 1);
+            final V[] newVal = creator.create(oldLen + 1);
             System.arraycopy(oldVal, 0, newVal, 0, pos);
             newVal[pos] = value;
             System.arraycopy(oldVal, pos, newVal, pos + 1, oldLen - pos);
@@ -330,7 +343,7 @@ public final class AtomicArray<T, V> {
                 if (pos < 0) {
                     return false;
                 }
-                final V[] newVal = newInstance(componentType, oldLen - 1);
+                final V[] newVal = creator.create(oldLen - 1);
                 System.arraycopy(oldVal, 0, newVal, 0, pos);
                 System.arraycopy(oldVal, pos + 1, newVal, pos, oldLen - pos - 1);
                 if (updater.compareAndSet(instance, oldVal, newVal)) {
@@ -371,6 +384,22 @@ public final class AtomicArray<T, V> {
             return (V[]) new Object[length];
         } else {
             return (V[]) Array.newInstance(componentType, length);
+        }
+    }
+
+    public interface Creator<V> {
+        V[] create(int len);
+    }
+
+    private static final class ReflectCreator<V> implements Creator<V> {
+        private final Class<V> type;
+
+        public ReflectCreator(final Class<V> type) {
+            this.type = type;
+        }
+
+        public V[] create(final int len) {
+            return newInstance(type, len);
         }
     }
 }

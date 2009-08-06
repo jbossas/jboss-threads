@@ -1,8 +1,8 @@
 /*
- * JBoss, Home of Professional Open Source.
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * as indicated by the @author tags. See the copyright.txt file in the
- * distribution for a full listing of individual contributors.
+ * JBoss, Home of Professional Open Source
+ * Copyright 2008, JBoss Inc., and individual contributors as indicated
+ * by the @authors tag. See the copyright.txt in the distribution for a
+ * full listing of individual contributors.
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as
@@ -22,26 +22,33 @@
 
 package org.jboss.threads;
 
-class CleanupExecutor implements DirectExecutor {
+import java.util.concurrent.Executor;
 
-    private final Runnable cleaner;
-    private final DirectExecutor delegate;
-    private static final DirectExecutor CLEANER_EXECUTOR = JBossExecutors.exceptionLoggingExecutor(JBossExecutors.directExecutor());
+/**
+ * An executor that simply delegates to another executor.  Use instances of this class to hide extra methods on
+ * another executor.
+ */
+class DelegatingExecutor implements Executor {
+    private final Executor delegate;
 
-    CleanupExecutor(final Runnable cleaner, final DirectExecutor delegate) {
-        this.cleaner = cleaner;
+    DelegatingExecutor(final Executor delegate) {
         this.delegate = delegate;
     }
 
+    protected Executor getDelegate() {
+        return delegate;
+    }
+
+    /**
+     * Execute a task by passing it to the delegate executor.
+     *
+     * @param command the task
+     */
     public void execute(final Runnable command) {
-        try {
-            delegate.execute(command);
-        } finally {
-            CLEANER_EXECUTOR.execute(cleaner);
-        }
+        delegate.execute(command);
     }
 
     public String toString() {
-        return String.format("%s (cleanup task=%s) -> %s", super.toString(), cleaner, delegate);
+        return String.format("%s -> %s", super.toString(), delegate);
     }
 }

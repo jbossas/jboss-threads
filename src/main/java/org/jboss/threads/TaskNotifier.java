@@ -22,16 +22,36 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
+/**
+ * A notifier which is called when tasks start, stop, or fail.
+ *
+ * @param <R> the task type
+ * @param <A> the attachment type
+ */
+public interface TaskNotifier<R extends Runnable, A> {
 
-class DelegatingWrappingExecutor extends DelegatingExecutor implements WrappingExecutor {
+    /**
+     * A task was started.
+     *
+     * @param runnable the task
+     * @param attachment the attachment
+     */
+    void started(R runnable, A attachment);
 
-    DelegatingWrappingExecutor(final Executor delegate) {
-        super(delegate);
-    }
+    /**
+     * A task has failed.
+     *
+     * @param runnable the task
+     * @param reason the reason for the failure
+     * @param attachment the attachment
+     */
+    void failed(R runnable, Throwable reason, A attachment);
 
-    public void execute(final DirectExecutor directExecutor, final Runnable task) throws RejectedExecutionException {
-        execute(JBossExecutors.executorTask(directExecutor, task));
-    }
+    /**
+     * A task has completed.
+     *
+     * @param runnable the task
+     * @param attachment the attachment
+     */
+    void finished(R runnable, A attachment);
 }

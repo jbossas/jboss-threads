@@ -31,10 +31,10 @@ import java.util.List;
 /**
  * An implementation of {@code ExecutorService} that delegates to the real executor, while disallowing termination.
  */
-public class ProtectedExecutorService extends AbstractExecutorService implements ExecutorService {
+class DelegatingExecutorService extends AbstractExecutorService implements ExecutorService {
     private final Executor delegate;
 
-    public ProtectedExecutorService(final Executor delegate) {
+    DelegatingExecutorService(final Executor delegate) {
         this.delegate = delegate;
     }
 
@@ -66,7 +66,7 @@ public class ProtectedExecutorService extends AbstractExecutorService implements
     }
 
     public static ExecutorService directExecutorService() {
-        return new ProtectedExecutorService(JBossExecutors.directExecutor());
+        return new DelegatingExecutorService(JBossExecutors.directExecutor());
     }
 
     public String toString() {

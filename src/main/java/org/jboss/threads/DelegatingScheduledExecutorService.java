@@ -30,10 +30,10 @@ import java.util.concurrent.Callable;
 /**
  * An implementation of {@code ScheduledExecutorService} that delegates to the real executor, while disallowing termination.
  */
-public class ProtectedScheduledExecutorService extends ProtectedExecutorService implements ScheduledExecutorService {
+class DelegatingScheduledExecutorService extends DelegatingExecutorService implements ScheduledExecutorService {
     private final ScheduledExecutorService delegate;
 
-    public ProtectedScheduledExecutorService(final ScheduledExecutorService delegate) {
+    DelegatingScheduledExecutorService(final ScheduledExecutorService delegate) {
         super(delegate);
         this.delegate = delegate;
     }

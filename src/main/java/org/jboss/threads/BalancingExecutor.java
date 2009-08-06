@@ -40,7 +40,11 @@ public class BalancingExecutor implements Executor {
     private final AtomicInteger seq = new AtomicInteger();
     private final Lock writeLock = new ReentrantLock();
 
-    private static final AtomicArray<BalancingExecutor, Executor> executorsUpdater = AtomicArray.create(newUpdater(BalancingExecutor.class, Executor[].class, "executors"), Executor.class);
+    private static final AtomicArray<BalancingExecutor, Executor> executorsUpdater = AtomicArray.create(newUpdater(BalancingExecutor.class, Executor[].class, "executors"), new AtomicArray.Creator<Executor>() {
+        public Executor[] create(final int len) {
+            return new Executor[len];
+        }
+    });
 
     /**
      * Construct a new instance.

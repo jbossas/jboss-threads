@@ -1,8 +1,8 @@
 /*
- * JBoss, Home of Professional Open Source.
- * Copyright 2009, Red Hat Middleware LLC, and individual contributors
- * as indicated by the @author tags. See the copyright.txt file in the
- * distribution for a full listing of individual contributors.
+ * JBoss, Home of Professional Open Source
+ * Copyright 2008, JBoss Inc., and individual contributors as indicated
+ * by the @authors tag. See the copyright.txt in the distribution for a
+ * full listing of individual contributors.
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as
@@ -22,16 +22,11 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
-
-class DelegatingWrappingExecutor extends DelegatingExecutor implements WrappingExecutor {
-
-    DelegatingWrappingExecutor(final Executor delegate) {
+/**
+ * A {@code DirectExecutor} version of {@code ProtectedExecutorService}.
+ */
+class DelegatingDirectExecutorService extends DelegatingExecutorService implements DirectExecutorService {
+    DelegatingDirectExecutorService(final DirectExecutor delegate) {
         super(delegate);
-    }
-
-    public void execute(final DirectExecutor directExecutor, final Runnable task) throws RejectedExecutionException {
-        execute(JBossExecutors.executorTask(directExecutor, task));
     }
 }

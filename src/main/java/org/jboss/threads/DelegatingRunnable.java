@@ -1,8 +1,8 @@
 /*
- * JBoss, Home of Professional Open Source
- * Copyright 2008, JBoss Inc., and individual contributors as indicated
- * by the @authors tag. See the copyright.txt in the distribution for a
- * full listing of individual contributors.
+ * JBoss, Home of Professional Open Source.
+ * Copyright 2009, Red Hat Middleware LLC, and individual contributors
+ * as indicated by the @author tags. See the copyright.txt file in the
+ * distribution for a full listing of individual contributors.
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as
@@ -22,13 +22,22 @@
 
 package org.jboss.threads;
 
-/**
- * A direct executor that simply delegates to another direct executor.  Use instances of this class to hide extra methods on
- * another executor.
- */
-public class ProtectedDirectExecutor extends ProtectedExecutor implements DirectExecutor {
+class DelegatingRunnable implements Runnable {
+    private final Runnable delegate;
 
-    public ProtectedDirectExecutor(final DirectExecutor delegate) {
-        super(delegate);
+    DelegatingRunnable(final Runnable delegate) {
+        this.delegate = delegate;
+    }
+
+    protected Runnable getDelegate() {
+        return delegate;
+    }
+
+    public void run() {
+        delegate.run();
+    }
+
+    public String toString() {
+        return String.format("%s -> %s", super.toString(), delegate);
     }
 }

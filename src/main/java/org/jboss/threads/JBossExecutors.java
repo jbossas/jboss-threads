@@ -33,7 +33,6 @@ import java.security.PrivilegedAction;
 import java.security.AccessController;
 import java.security.AccessControlContext;
 import java.security.Permission;
-import java.lang.reflect.Field;
 import org.jboss.logging.Logger;
 
 /**
@@ -55,9 +54,9 @@ public final class JBossExecutors {
         }
     });
 
-    private static final DirectExecutorService DIRECT_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(SimpleDirectExecutor.INSTANCE);
-    private static final DirectExecutorService REJECTING_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(RejectingExecutor.INSTANCE);
-    private static final DirectExecutorService DISCARDING_EXECUTOR_SERVICE = new ProtectedDirectExecutorService(DiscardingExecutor.INSTANCE);
+    private static final DirectExecutorService DIRECT_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(SimpleDirectExecutor.INSTANCE);
+    private static final DirectExecutorService REJECTING_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(RejectingExecutor.INSTANCE);
+    private static final DirectExecutorService DISCARDING_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(DiscardingExecutor.INSTANCE);
 
     // ==================================================
     // DIRECT EXECUTORS
@@ -386,7 +385,7 @@ public final class JBossExecutors {
      * @return the executor service
      */
     public static ExecutorService protectedExecutorService(final Executor target) {
-        return new ProtectedExecutorService(target);
+        return new DelegatingExecutorService(target);
     }
 
     /**
@@ -397,7 +396,7 @@ public final class JBossExecutors {
      * @return the executor service
      */
     public static DirectExecutorService protectedDirectExecutorService(final DirectExecutor target) {
-        return new ProtectedDirectExecutorService(target);
+        return new DelegatingDirectExecutorService(target);
     }
 
     /**
@@ -408,7 +407,7 @@ public final class JBossExecutors {
      * @return the executor service
      */
     public static ScheduledExecutorService protectedScheduledExecutorService(final ScheduledExecutorService target) {
-        return new ProtectedScheduledExecutorService(target);
+        return new DelegatingScheduledExecutorService(target);
     }
 
     // ==================================================
@@ -449,66 +448,12 @@ public final class JBossExecutors {
         }
     };
 
-    private static final Runnable THREAD_LOCAL_RESETTER = new ThreadLocalResetter();
-
-    private static final class ThreadLocalResetter implements Runnable {
-        private static final Field THREAD_LOCAL_MAP_FIELD;
-        private static final Field INHERITABLE_THREAD_LOCAL_MAP_FIELD;
-
-        static {
-            THREAD_LOCAL_MAP_FIELD = AccessController.doPrivileged(new PrivilegedAction<Field>() {
-                public Field run() {
-                    final Field field;
-                    try {
-                        field = Thread.class.getDeclaredField("threadLocals");
-                        field.setAccessible(true);
-                    } catch (NoSuchFieldException e) {
-                        return null;
-                    }
-                    return field;
-                }
-            });
-            INHERITABLE_THREAD_LOCAL_MAP_FIELD = AccessController.doPrivileged(new PrivilegedAction<Field>() {
-                public Field run() {
-                    final Field field;
-                    try {
-                        field = Thread.class.getDeclaredField("inheritableThreadLocals");
-                        field.setAccessible(true);
-                    } catch (NoSuchFieldException e) {
-                        return null;
-                    }
-                    return field;
-                }
-            });
-        }
-
-        private ThreadLocalResetter() {
-        }
-
-        public void run() {
-            final Thread thread = Thread.currentThread();
-            clear(thread, THREAD_LOCAL_MAP_FIELD);
-            clear(thread, INHERITABLE_THREAD_LOCAL_MAP_FIELD);
-        }
-
-        private static void clear(final Thread currentThread, final Field field) {
-            try {
-                if (field != null) field.set(currentThread, null);
-            } catch (IllegalAccessException e) {
-                // ignore
-            }
-        }
-
-        public String toString() {
-            return "Thread-local resetting Runnable";
-        }
-    }
-
     // ==================================================
     // RUNNABLES
     // ==================================================
 
     private static final Runnable NULL_RUNNABLE = new NullRunnable();
+    private static final Runnable THREAD_LOCAL_RESETTER = new ThreadLocalResetter();
 
     /**
      * Get the null runnable which does nothing.
@@ -682,5 +627,114 @@ public final class JBossExecutors {
      */
     public static Thread.UncaughtExceptionHandler loggingExceptionHandler() {
         return LOGGING_HANDLER;
+    }
+
+    private static <R extends Runnable> void logError(final R runnable, final Throwable t, final String method) {
+        THREAD_ERROR_LOGGER.errorf(t, "Notifier %s() method invocation failed for task %s", method, runnable);
+    }
+
+    private static <R extends Runnable, A> void started(TaskNotifier<? super R, ? super A> notifier, R runnable, A attachment) {
+        try {
+            notifier.started(runnable, attachment);
+        } catch (Throwable t) {
+            logError(runnable, t, "started");
+        }
+    }
+
+    private static <R extends Runnable, A> void finished(TaskNotifier<? super R, ? super A> notifier, R runnable, A attachment) {
+        try {
+            notifier.finished(runnable, attachment);
+        } catch (Throwable t) {
+            logError(runnable, t, "finished");
+        }
+    }
+
+    private static <R extends Runnable, A> void failed(TaskNotifier<? super R, ? super A> notifier, Throwable reason, R runnable, A attachment) {
+        try {
+            notifier.failed(runnable, reason, attachment);
+        } catch (Throwable t) {
+            logError(runnable, t, "failed");
+        }
+    }
+
+    /**
+     * Run a task through the given direct executor, invoking the given notifier with the given attachment.
+     *
+     * @param task the task
+     * @param directExecutor the executor
+     * @param notifier the notifier
+     * @param attachment the attachment
+     * @param <R> the task type
+     * @param <A> the attachment type
+     */
+    public static <R extends Runnable, A> void run(R task, DirectExecutor directExecutor, TaskNotifier<? super R, ? super A> notifier, A attachment) {
+        started(notifier, task, attachment);
+        boolean ok = false;
+        try {
+            directExecutor.execute(task);
+            ok = true;
+        } catch (RuntimeException t) {
+            failed(notifier, t, task, attachment);
+            throw t;
+        } catch (Error t) {
+            failed(notifier, t, task, attachment);
+            throw t;
+        } catch (Throwable t) {
+            failed(notifier, t, task, attachment);
+            throw new RuntimeException("Unknown throwable received", t);
+        } finally {
+            if (ok) finished(notifier, task, attachment);
+        }
+    }
+
+    /**
+     * Run a task, invoking the given notifier with the given attachment.
+     *
+     * @param task the task
+     * @param notifier the notifier
+     * @param attachment the attachment
+     * @param <R> the task type
+     * @param <A> the attachment type
+     */
+    public static <R extends Runnable, A> void run(R task, TaskNotifier<? super R, ? super A> notifier, A attachment) {
+        run(task, directExecutor(), notifier, attachment);
+    }
+
+    /**
+     * Get a notifying runnable wrapper for a task.  The notifier will be invoked when the task is run.
+     *
+     * @param task the task
+     * @param notifier the notifier
+     * @param attachment the attachment
+     * @param <R> the task type
+     * @param <A> the attachment type
+     * @return the wrapping runnable
+     */
+    public static <R extends Runnable, A> Runnable notifyingRunnable(R task, TaskNotifier<? super R, ? super A> notifier, A attachment) {
+        return new NotifyingRunnable<R, A>(task, notifier, attachment);
+    }
+
+    /**
+     * Get a notifying direct executor.  The notifier will be invoked when each task is run.
+     *
+     * @param delegate the executor which will actually run the task
+     * @param notifier the notifier
+     * @param attachment the attachment
+     * @param <A> the attachment type
+     * @return the direct executor
+     */
+    public static <A> DirectExecutor notifyingDirectExecutor(DirectExecutor delegate, TaskNotifier<Runnable, ? super A> notifier, A attachment) {
+        return new NotifyingDirectExecutor<A>(delegate, notifier, attachment);
+    }
+
+    /**
+     * Create a builder for a dependent task.
+     *
+     * @param executor the executor to use
+     * @param task the task to run when all dependencies are met
+     * @return the builder
+     */
+    public static DependencyTaskBuilder dependencyTaskBuilder(final Executor executor, final Runnable task) {
+        return new DependencyTaskBuilder(executor, task);
     }
 }

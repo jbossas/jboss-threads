@@ -1,8 +1,8 @@
 /*
- * JBoss, Home of Professional Open Source
- * Copyright 2008, JBoss Inc., and individual contributors as indicated
- * by the @authors tag. See the copyright.txt in the distribution for a
- * full listing of individual contributors.
+ * JBoss, Home of Professional Open Source.
+ * Copyright 2009, Red Hat Middleware LLC, and individual contributors
+ * as indicated by the @author tags. See the copyright.txt file in the
+ * distribution for a full listing of individual contributors.
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as
@@ -22,29 +22,18 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.Executor;
+final class NotifyingDirectExecutor<A> extends DelegatingDirectExecutor implements DirectExecutor {
 
-/**
- * An executor that simply delegates to another executor.  Use instances of this class to hide extra methods on
- * another executor.
- */
-public class ProtectedExecutor implements Executor {
-    private final Executor delegate;
+    private final TaskNotifier<Runnable, ? super A> notifier;
+    private final A attachment;
 
-    public ProtectedExecutor(final Executor delegate) {
-        this.delegate = delegate;
+    NotifyingDirectExecutor(final DirectExecutor delegate, final TaskNotifier<Runnable, ? super A> notifier, final A attachment) {
+        super(delegate);
+        this.notifier = notifier;
+        this.attachment = attachment;
     }
 
-    /**
-     * Execute a task by passing it to the delegate executor.
-     *
-     * @param command the task
-     */
     public void execute(final Runnable command) {
-        delegate.execute(command);
-    }
-
-    public String toString() {
-        return String.format("%s -> %s", super.toString(), delegate);
+        JBossExecutors.run(command, getDelegate(), notifier, attachment);
     }
 }
