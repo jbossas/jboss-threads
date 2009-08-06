@@ -98,16 +98,15 @@ public final class Dependency {
     private void dependencyFailed() {
         final AtomicIntegerFieldUpdater<Dependency> updater = depUpdater;
         final int res = updater.decrementAndGet(this);
-        if (res == 0) {
-            synchronized (lock) {
-                state = State.FAILED;
-                final Dependency.Runner runner = this.runner;
-                // clear stuff out since this object will likely be kept alive longer than these objects need to be
-                runner.runnable = null;
-                runner.dependents = null;
-                this.runner = null;
-            }
-        } else if (res < 0) {
+        synchronized (lock) {
+            state = State.FAILED;
+            final Dependency.Runner runner = this.runner;
+            // clear stuff out since this object will likely be kept alive longer than these objects need to be
+            runner.runnable = null;
+            runner.dependents = null;
+            this.runner = null;
+        }
+        if (res < 0) {
             // oops?
             updater.incrementAndGet(this);
         }
