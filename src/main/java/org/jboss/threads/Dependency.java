@@ -75,6 +75,7 @@ public final class Dependency {
         final AtomicIntegerFieldUpdater<Dependency> updater = depUpdater;
         final int res = updater.decrementAndGet(this);
         if (res == 0) {
+            final Dependency.Runner runner = this.runner;
             synchronized (lock) {
                 try {
                     executor.execute(runner);
@@ -82,7 +83,7 @@ public final class Dependency {
                 } catch (RejectedExecutionException e) {
                     log.errorf(e, "Error submitting task %s to executor", runner.runnable);
                     state = State.FAILED;
-                    final Dependency.Runner runner = this.runner;
+                    // clear stuff out since this object will likely be kept alive longer than these objects need to be
                     runner.runnable = null;
                     runner.dependents = null;
                     this.runner = null;
@@ -101,6 +102,7 @@ public final class Dependency {
             synchronized (lock) {
                 state = State.FAILED;
                 final Dependency.Runner runner = this.runner;
+                // clear stuff out since this object will likely be kept alive longer than these objects need to be
                 runner.runnable = null;
                 runner.dependents = null;
                 this.runner = null;
@@ -131,6 +133,7 @@ public final class Dependency {
                 final List<Dependency> tasks;
                 synchronized (lock) {
                     tasks = dependents;
+                    // clear stuff out in case some stupid executor holds on to the runnable
                     dependents = null;
                     runnable = null;
                     state = ok ? State.DONE : State.FAILED;
