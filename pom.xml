@@ -60,6 +60,17 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <doclet>net.gleamynode.apiviz.APIviz</doclet>
+                    <docletArtifact>
+                        <groupId>org.jboss.apiviz</groupId>
+                        <artifactId>apiviz</artifactId>
+                        <version>1.2.5.GA</version>
+                    </docletArtifact>
+                </configuration>
+            </plugin>
         </plugins>
         <finalName>jboss-threads</finalName>
     </build>
