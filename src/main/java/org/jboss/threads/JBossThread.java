@@ -30,7 +30,7 @@ import org.jboss.logging.Logger;
 public final class JBossThread extends Thread {
     private static final Logger log = Logger.getLogger(JBossThread.class);
 
-    private InterruptHandler interruptHandler;
+    private volatile InterruptHandler interruptHandler;
     private ThreadNameInfo threadNameInfo;
 
     /**
