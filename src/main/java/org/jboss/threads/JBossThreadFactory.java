@@ -43,7 +43,7 @@ public final class JBossThreadFactory implements ThreadFactory {
 
     private final long factoryIndex;
 
-    private final AccessControlContext CREATING_CONTEXT;
+    private final AccessControlContext creatingContext;
 
     private static final AtomicLong globalThreadIndexSequence = new AtomicLong(1L);
     private static final AtomicLong factoryIndexSequence = new AtomicLong(1L);
@@ -60,6 +60,22 @@ public final class JBossThreadFactory implements ThreadFactory {
      * @param stackSize the JVM-specific stack size, or {@code null} to leave it unspecified
      */
     public JBossThreadFactory(ThreadGroup threadGroup, final Boolean daemon, final Integer initialPriority, String namePattern, final Thread.UncaughtExceptionHandler uncaughtExceptionHandler, final Long stackSize) {
+        this(threadGroup, daemon, initialPriority, namePattern, uncaughtExceptionHandler, stackSize, AccessController.getContext());
+    }
+
+    /**
+     * Construct a new instance.  The access control context of the calling thread will be the one used to create
+     * new threads if a security manager is installed.
+     *
+     * @param threadGroup the thread group to assign threads to by default (may be {@code null})
+     * @param daemon whether the created threads should be daemon threads, or {@code null} to use the thread group's setting
+     * @param initialPriority the initial thread priority, or {@code null} to use the thread group's setting
+     * @param namePattern the name pattern string
+     * @param uncaughtExceptionHandler the uncaught exception handler, if any
+     * @param stackSize the JVM-specific stack size, or {@code null} to leave it unspecified
+     * @param creatingContext the access control context to use to create the threads
+     */
+    public JBossThreadFactory(ThreadGroup threadGroup, final Boolean daemon, final Integer initialPriority, String namePattern, final Thread.UncaughtExceptionHandler uncaughtExceptionHandler, final Long stackSize, final AccessControlContext creatingContext) {
         if (threadGroup == null) {
             final SecurityManager sm = System.getSecurityManager();
             threadGroup = sm != null ? sm.getThreadGroup() : Thread.currentThread().getThreadGroup();
@@ -74,12 +90,13 @@ public final class JBossThreadFactory implements ThreadFactory {
             namePattern = "pool-%f-thread-%t";
         }
         this.namePattern = namePattern;
-        CREATING_CONTEXT = AccessController.getContext();
+        this.creatingContext = creatingContext;
     }
 
     public Thread newThread(final Runnable target) {
-        if (System.getSecurityManager() != null) {
-            return AccessController.doPrivileged(new ThreadCreateAction(target), CREATING_CONTEXT);
+        final AccessControlContext context;
+        if (System.getSecurityManager() != null && (context = creatingContext) != null) {
+            return AccessController.doPrivileged(new ThreadCreateAction(target), context);
         } else {
             return createThread(target);
         }
