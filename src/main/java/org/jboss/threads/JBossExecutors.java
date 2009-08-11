@@ -92,12 +92,33 @@ public final class JBossExecutors {
     }
 
     /**
+     * Get a rejecting executor.  This executor will reject any task submitted to it with the given message.
+     *
+     * @param message the reject message
+     * @return the rejecting executor instance
+     */
+    public static DirectExecutor rejectingExecutor(final String message) {
+        return new RejectingExecutor(message);
+    }
+
+    /**
      * Get the rejecting executor service.  This executor will reject any task submitted to it.  It cannot be shut down.
      *
      * @return the rejecting executor service instance
      */
     public static DirectExecutorService rejectingExecutorService() {
         return REJECTING_EXECUTOR_SERVICE;
+    }
+
+    /**
+     * Get the rejecting executor service.  This executor will reject any task submitted to it with the given message.
+     * It cannot be shut down.
+     *
+     * @param message the reject message
+     * @return the rejecting executor service instance
+     */
+    public static DirectExecutorService rejectingExecutorService(final String message) {
+        return protectedDirectExecutorService(rejectingExecutor(message));
     }
 
     /**
