@@ -28,7 +28,8 @@ import org.jboss.logging.Logger;
  * A JBoss thread.  Supports logging and extra operations.
  */
 public final class JBossThread extends Thread {
-    private static final Logger log = Logger.getLogger(JBossThread.class);
+    private static final Logger log = Logger.getLogger("org.jboss.threads");
+    private static final Logger ihlog = Logger.getLogger("org.jboss.threads.interrupt-handler");
 
     private volatile InterruptHandler interruptHandler;
     private ThreadNameInfo threadNameInfo;
@@ -97,7 +98,7 @@ public final class JBossThread extends Thread {
      * handler is called from the <em>calling</em> thread, not the thread being interrupted.
      */
     public void interrupt() {
-        log.tracef("Interrupting thread \"%s\"", this);
+        ihlog.tracef("Interrupting thread \"%s\"", this);
         try {
             super.interrupt();
         } finally {
@@ -106,7 +107,7 @@ public final class JBossThread extends Thread {
                 try {
                     interruptHandler.handleInterrupt(this);
                 } catch (Throwable t) {
-                    log.errorf(t, "Interrupt handler %s threw an exception", interruptHandler);
+                    ihlog.errorf(t, "Interrupt handler %s threw an exception", interruptHandler);
                 }
             }
         }

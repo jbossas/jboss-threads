@@ -22,10 +22,10 @@
 
 package org.jboss.threads;
 
+import java.util.ArrayDeque;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.Executor;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.Condition;
@@ -47,7 +47,7 @@ public final class OrderedExecutor implements Executor {
     // @protectedby lock
     private boolean running;
     // @protectedby lock
-    private RejectionPolicy policy;
+    private boolean blocking;
     // @protectedby lock
     private Executor handoffExecutor;
 
@@ -58,7 +58,7 @@ public final class OrderedExecutor implements Executor {
      * @param parent the parent to delegate tasks to
      */
     public OrderedExecutor(final Executor parent) {
-        this(parent, RejectionPolicy.BLOCK, null);
+        this(parent, new ArrayDeque<Runnable>());
     }
 
     /**
@@ -68,18 +68,28 @@ public final class OrderedExecutor implements Executor {
      * @param queue the queue to use to hold tasks
      */
     public OrderedExecutor(final Executor parent, final Queue<Runnable> queue) {
-        this(parent, queue, RejectionPolicy.BLOCK, null);
+        this(parent, queue, true, null);
     }
 
     /**
-     * Construct a new instance using an unbounded FIFO queue.
+     * Construct a new instance using a bounded FIFO queue of the given size and a blocking reject policy.
+     *
+     * @param parent the parent to delegate tasks to
+     * @param queueLength the fixed length of the queue to use to hold tasks
+     */
+    public OrderedExecutor(final Executor parent, final int queueLength) {
+        this(parent, new ArrayQueue<Runnable>(queueLength), true, null);
+    }
+
+    /**
+     * Construct a new instance using a bounded FIFO queue of the given size and a handoff reject policy
      *
      * @param parent the parent executor
-     * @param policy the task rejection policy
+     * @param queueLength the fixed length of the queue to use to hold tasks
      * @param handoffExecutor the executor to hand tasks to if the queue is full
      */
-    public OrderedExecutor(final Executor parent, final RejectionPolicy policy, final Executor handoffExecutor) {
-        this(parent, new LinkedList<Runnable>(), policy, handoffExecutor);
+    public OrderedExecutor(final Executor parent, final int queueLength, final Executor handoffExecutor) {
+        this(parent, new ArrayQueue<Runnable>(queueLength), false, handoffExecutor);
     }
 
     /**
@@ -87,25 +97,19 @@ public final class OrderedExecutor implements Executor {
      *
      * @param parent the parent executor
      * @param queue the task queue to use
-     * @param policy the task rejection policy
+     * @param blocking {@code true} if rejected tasks should block, {@code false} if rejected tasks should be handed off
      * @param handoffExecutor the executor to hand tasks to if the queue is full
      */
-    public OrderedExecutor(final Executor parent, final Queue<Runnable> queue, final RejectionPolicy policy, final Executor handoffExecutor) {
+    public OrderedExecutor(final Executor parent, final Queue<Runnable> queue, final boolean blocking, final Executor handoffExecutor) {
         if (parent == null) {
             throw new NullPointerException("parent is null");
         }
         if (queue == null) {
             throw new NullPointerException("queue is null");
         }
-        if (policy == null) {
-            throw new NullPointerException("policy is null");
-        }
-        if (policy == RejectionPolicy.HANDOFF && handoffExecutor == null) {
-            throw new NullPointerException("handoffExecutor is null");
-        }
         this.queue = queue;
         this.parent = parent;
-        this.policy = policy;
+        this.blocking = blocking;
         this.handoffExecutor = handoffExecutor;
     }
 
@@ -115,26 +119,21 @@ public final class OrderedExecutor implements Executor {
      * @param command the task to run.
      */
     public void execute(Runnable command) {
-        try {
-            lock.lockInterruptibly();
+        final Executor executor;
+        OUT: for (;;) {
+            lock.lock();
             try {
                 while (! queue.offer(command)) {
-                    switch (policy) {
-                        case ABORT:
-                            throw new RejectedExecutionException();
-                        case BLOCK:
+                    if (blocking) {
+                        try {
                             removeCondition.await();
-                            break;
-                        case DISCARD:
-                            return;
-                        case DISCARD_OLDEST:
-                            if (queue.poll() != null) {
-                                queue.add(command);
-                            }
-                            break;
-                        case HANDOFF:
-                            handoffExecutor.execute(command);
-                            return;
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new ExecutionInterruptedException();
+                        }
+                    } else {
+                        executor = handoffExecutor;
+                        break OUT;
                     }
                 }
                 if (! running) {
@@ -149,11 +148,13 @@ public final class OrderedExecutor implements Executor {
                         }
                     }
                 }
+                return;
             } finally {
                 lock.unlock();
             }
-        } catch (InterruptedException e) {
-            throw new RejectedExecutionException();
+        }
+        if (executor != null) {
+            executor.execute(command);
         }
     }
 

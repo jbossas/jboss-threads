@@ -23,23 +23,132 @@
 package org.jboss.threads;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.jboss.threads.management.ThreadExecutorMBean;
 
-class ThreadFactoryExecutor implements Executor {
+class ThreadFactoryExecutor implements Executor, ThreadExecutorMBean {
 
     private final ThreadFactory factory;
+    private final Semaphore limitSemaphore;
 
-    ThreadFactoryExecutor(final ThreadFactory factory) {
+    private final String name;
+    private final Object lock = new Object();
+    private int maxThreads;
+    private int largestThreadCount;
+    private int currentThreadCount;
+    private final AtomicInteger rejected = new AtomicInteger();
+    private volatile boolean blocking;
+
+    ThreadFactoryExecutor(final String name, final ThreadFactory factory, int maxThreads, boolean blocking) {
+        this.name = name;
         this.factory = factory;
+        this.maxThreads = maxThreads;
+        this.blocking = blocking;
+        limitSemaphore = new Semaphore(maxThreads);
+    }
+
+    public int getMaxThreads() {
+        synchronized (lock) {
+            return maxThreads;
+        }
+    }
+
+    public void setMaxThreads(final int maxThreads) {
+        if (maxThreads < 0) {
+            throw new IllegalArgumentException("Max threads must not be negative");
+        }
+        synchronized (lock) {
+            final int old = this.maxThreads;
+            final int diff = old - maxThreads;
+            if (diff < 0) {
+                limitSemaphore.release(-diff);
+            } else if (diff > 0) {
+                if (! limitSemaphore.tryAcquire(diff)) {
+                    throw new IllegalArgumentException("Cannot reduce maximum threads below current number of running threads");
+                }
+            }
+            this.maxThreads = maxThreads;
+        }
     }
 
     public void execute(final Runnable command) {
-        final Thread thread = factory.newThread(command);
-        if (thread == null) {
-            throw new RejectedExecutionException("No threads can be created");
+        try {
+            final Semaphore semaphore = limitSemaphore;
+            if (blocking) {
+                try {
+                    semaphore.acquire();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new ExecutionInterruptedException();
+                }
+            } else {
+                if (! semaphore.tryAcquire()) {
+                    throw new RejectedExecutionException("Task limit reached");
+                }
+            }
+            boolean ok = false;
+            try {
+                final Thread thread = factory.newThread(new Runnable() {
+                    public void run() {
+                        try {
+                            synchronized (lock) {
+                                int t = ++currentThreadCount;
+                                if (t > largestThreadCount) {
+                                    largestThreadCount = t;
+                                }
+                            }
+                            command.run();
+                            synchronized (lock) {
+                                currentThreadCount--;
+                            }
+                        } finally {
+                            limitSemaphore.release();
+                        }
+                    }
+                });
+                if (thread == null) {
+                    throw new ThreadCreationException("No threads can be created");
+                }
+                thread.start();
+                ok = true;
+            } finally {
+                if (! ok) semaphore.release();
+            }
+        } catch (RejectedExecutionException e) {
+            rejected.getAndIncrement();
+            throw e;
         }
-        thread.start();
+    }
+
+    public boolean isBlocking() {
+        return blocking;
+    }
+
+    public void setBlocking(final boolean blocking) {
+        this.blocking = blocking;
+    }
+
+    public int getLargestThreadCount() {
+        synchronized (lock) {
+            return largestThreadCount;
+        }
+    }
+
+    public int getCurrentThreadCount() {
+        synchronized (lock) {
+            return currentThreadCount;
+        }
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public int getRejectedCount() {
+        return rejected.get();
     }
 
     public String toString() {

@@ -36,11 +36,15 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Set;
 import java.util.HashSet;
+import org.jboss.logging.Logger;
+import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 
 /**
  * An executor which uses a regular queue to hold tasks.  The executor may be tuned at runtime in many ways.
  */
-public final class SimpleQueueExecutor extends AbstractExecutorService implements ExecutorService, ThreadPoolExecutorMBean {
+public final class QueueExecutor extends AbstractExecutorService implements ExecutorService, BoundedQueueThreadPoolExecutorMBean {
+    private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
+
     private final String name;
     private final Lock lock = new ReentrantLock();
     // signal when a task is written to the queue
@@ -59,7 +63,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
     private boolean allowCoreThreadTimeout;
     private long keepAliveTime;
     private TimeUnit keepAliveTimeUnit;
-    private RejectionPolicy rejectionPolicy;
+    private boolean blocking;
     private Executor handoffExecutor;
 
     private int threadCount;
@@ -70,7 +74,20 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
 
     private Queue<Runnable> queue;
 
-    public SimpleQueueExecutor(final String name, final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final RejectionPolicy rejectionPolicy, final Executor handoffExecutor) {
+    /**
+     * Create a new instance.
+     *
+     * @param name the name of the executor
+     * @param corePoolSize the number of threads to create before enqueueing tasks
+     * @param maxPoolSize the maximum number of threads to create
+     * @param keepAliveTime the amount of time that an idle thread should remain active
+     * @param keepAliveTimeUnit the unit of time for {@code keepAliveTime}
+     * @param queue the queue to use for tasks
+     * @param threadFactory the thread factory to use for new threads
+     * @param blocking {@code true} if the executor should block when the queue is full and no threads are available, {@code false} to use the handoff executor
+     * @param handoffExecutor the executor which is called when blocking is disabled and a task cannot be accepted, or {@code null} to reject the task
+     */
+    public QueueExecutor(final String name, final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
         this.name = name;
         if (threadFactory == null) {
             throw new NullPointerException("threadFactory is null");
@@ -80,12 +97,6 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
         if (keepAliveTimeUnit == null) {
             throw new NullPointerException("keepAliveTimeUnit is null");
-        }
-        if (rejectionPolicy == null) {
-            throw new NullPointerException("rejectionPolicy is null");
-        }
-        if (rejectionPolicy == RejectionPolicy.HANDOFF && handoffExecutor == null) {
-            throw new NullPointerException("handoffExecutor is null");
         }
         final Lock lock = this.lock;
         lock.lock();
@@ -97,71 +108,114 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
             this.corePoolSize = corePoolSize;
             this.maxPoolSize = maxPoolSize;
             this.queue = queue;
-            this.rejectionPolicy = rejectionPolicy;
+            this.blocking = blocking;
             this.handoffExecutor = handoffExecutor;
         } finally {
             lock.unlock();
         }
     }
 
-    public void execute(final Runnable task) throws RejectedExecutionException {
+    /**
+     * Create a new instance.
+     *
+     * @param name the name of the executor
+     * @param corePoolSize the number of threads to create before enqueueing tasks
+     * @param maxPoolSize the maximum number of threads to create
+     * @param keepAliveTime the amount of time that an idle thread should remain active
+     * @param keepAliveTimeUnit the unit of time for {@code keepAliveTime}
+     * @param queueLength the fixed queue length to use for tasks
+     * @param threadFactory the thread factory to use for new threads
+     * @param blocking {@code true} if the executor should block when the queue is full and no threads are available, {@code false} to use the handoff executor
+     * @param handoffExecutor the executor which is called when blocking is disabled and a task cannot be accepted, or {@code null} to reject the task
+     */
+    public QueueExecutor(final String name, final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final int queueLength, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
+        this.name = name;
+        if (threadFactory == null) {
+            throw new NullPointerException("threadFactory is null");
+        }
+        if (queue == null) {
+            throw new NullPointerException("queue is null");
+        }
+        if (keepAliveTimeUnit == null) {
+            throw new NullPointerException("keepAliveTimeUnit is null");
+        }
         final Lock lock = this.lock;
+        lock.lock();
         try {
-            lock.lockInterruptibly();
-            try {
-                for (;;) {
-                    if (stop) {
-                        throw new RejectedExecutionException("Executor is stopped");
-                    }
-                    // Try core thread first, then queue, then extra thread
-                    final int count = threadCount;
-                    if (count < corePoolSize) {
-                        startNewThread(task);
-                        threadCount = count + 1;
-                        return;
-                    }
-                    // next queue...
-                    final Queue<Runnable> queue = this.queue;
-                    if (queue.offer(task)) {
-                        enqueueCondition.signal();
-                        return;
-                    }
-                    // extra threads?
-                    if (count < maxPoolSize) {
-                        startNewThread(task);
-                        threadCount = count + 1;
-                        return;
-                    }
-                    rejectCount++;
-                    // how to reject the task...
-                    switch (rejectionPolicy) {
-                        case ABORT:
-                            throw new RejectedExecutionException("Executor is busy");
-                        case BLOCK:
-                            removeCondition.await();
-                            break;
-                        case DISCARD:
-                            return;
-                        case DISCARD_OLDEST:
-                            if (queue.poll() != null) {
-                                queue.add(task);
-                                enqueueCondition.signal();
-                            }
-                            return;
-                        case HANDOFF:
-                            handoffExecutor.execute(task);
-                            return;
-                    }
-                }
-            } finally {
-                lock.unlock();
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ExecutionInterruptedException("Thread interrupted");
+            this.threadFactory = threadFactory;
+            // configurable...
+            this.keepAliveTime = keepAliveTime;
+            this.keepAliveTimeUnit = keepAliveTimeUnit;
+            this.corePoolSize = corePoolSize;
+            this.maxPoolSize = maxPoolSize;
+            queue = new ArrayQueue<Runnable>(queueLength);
+            this.blocking = blocking;
+            this.handoffExecutor = handoffExecutor;
+        } finally {
+            lock.unlock();
         }
     }
 
+    /**
+     * Execute a task.
+     *
+     * @param task the task to execute
+     * @throws RejectedExecutionException when a task is rejected by the handoff executor
+     * @throws StoppedExecutorException when the executor is terminating
+     * @throws ExecutionInterruptedException when blocking is enabled and the current thread is interrupted before a task could be accepted
+     */
+    public void execute(final Runnable task) throws RejectedExecutionException {
+        final Executor executor;
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            for (;;) {
+                if (stop) {
+                    throw new StoppedExecutorException("Executor is stopped");
+                }
+                // Try core thread first, then queue, then extra thread
+                final int count = threadCount;
+                if (count < corePoolSize) {
+                    startNewThread(task);
+                    threadCount = count + 1;
+                    return;
+                }
+                // next queue...
+                final Queue<Runnable> queue = this.queue;
+                if (queue.offer(task)) {
+                    enqueueCondition.signal();
+                    return;
+                }
+                // extra threads?
+                if (count < maxPoolSize) {
+                    startNewThread(task);
+                    threadCount = count + 1;
+                    return;
+                }
+                if (blocking) {
+                    try {
+                        removeCondition.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new ExecutionInterruptedException("Thread interrupted");
+                    }
+                } else {
+                    // delegate the task outside of the lock.
+                    rejectCount++;
+                    executor = handoffExecutor;
+                    break;
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+        if (executor != null) {
+            executor.execute(task);
+        }
+        return;
+    }
+
+    /** {@inheritDoc} */
     public void shutdown() {
         final Lock lock = this.lock;
         lock.lock();
@@ -171,18 +225,21 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
                 // wake up the whole town
                 removeCondition.signalAll();
                 enqueueCondition.signalAll();
+                for (Thread worker : workers) {
+                    worker.interrupt();
+                }
             }
         } finally {
             lock.unlock();
         }
     }
 
+    /** {@inheritDoc} */
     public List<Runnable> shutdownNow() {
         final Lock lock = this.lock;
         lock.lock();
         try {
             stop = true;
-            interrupt = true;
             removeCondition.signalAll();
             enqueueCondition.signalAll();
             for (Thread worker : workers) {
@@ -197,6 +254,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public boolean isShutdown() {
         final Lock lock = this.lock;
         lock.lock();
@@ -207,6 +265,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public boolean isTerminated() {
         final Lock lock = this.lock;
         lock.lock();
@@ -217,6 +276,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public boolean awaitTermination(final long timeout, final TimeUnit unit) throws InterruptedException {
         final Lock lock = this.lock;
         lock.lockInterruptibly();
@@ -240,6 +300,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public boolean isAllowCoreThreadTimeout() {
         final Lock lock = this.lock;
         lock.lock();
@@ -250,6 +311,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public void setAllowCoreThreadTimeout(boolean allowCoreThreadTimeout) {
         final Lock lock = this.lock;
         lock.lock();
@@ -264,6 +326,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public int getCorePoolSize() {
         final Lock lock = this.lock;
         lock.lock();
@@ -274,6 +337,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public void setCorePoolSize(final int corePoolSize) {
         final Lock lock = this.lock;
         lock.lock();
@@ -301,6 +365,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public int getMaxPoolSize() {
         final Lock lock = this.lock;
         lock.lock();
@@ -311,6 +376,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public void setMaxPoolSize(final int maxPoolSize) {
         final Lock lock = this.lock;
         lock.lock();
@@ -338,6 +404,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public long getKeepAliveTime() {
         final Lock lock = this.lock;
         lock.lock();
@@ -348,6 +415,12 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /**
+     * Set the keep-alive time to the given amount of time.
+     *
+     * @param keepAliveTime the amount of time
+     * @param keepAliveTimeUnit the unit of time
+     */
     public void setKeepAliveTime(final long keepAliveTime, final TimeUnit keepAliveTimeUnit) {
         if (keepAliveTimeUnit == null) {
             throw new NullPointerException("keepAliveTimeUnit is null");
@@ -364,62 +437,68 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public void setKeepAliveTime(final long milliseconds) {
         setKeepAliveTime(milliseconds, TimeUnit.MILLISECONDS);
     }
 
-    public RejectionPolicy getRejectionPolicy() {
+    /**
+     * Determine whether this thread pool executor is set to block when a task cannot be accepted immediately.
+     *
+     * @return {@code true} if blocking is enabled, {@code false} if the handoff executor is used
+     */
+    public boolean isBlocking() {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            return rejectionPolicy;
+            return blocking;
         } finally {
             lock.unlock();
         }
     }
 
-    public void setRejectionPolicy(final RejectionPolicy newPolicy, final Executor handoffExecutor) {
-        if (newPolicy == null) {
-            throw new NullPointerException("rejectionPolicy is null");
-        }
-        if (newPolicy == RejectionPolicy.HANDOFF && handoffExecutor == null) {
-            throw new NullPointerException("handoffExecutor is null");
-        }
+    /**
+     * Set whether this thread pool executor should be set to block when a task cannot be accepted immediately.
+     *
+     * @param blocking {@code true} if blocking is enabled, {@code false} if the handoff executor is used
+     */
+    public void setBlocking(boolean blocking) {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            if (rejectionPolicy == RejectionPolicy.BLOCK && newPolicy != RejectionPolicy.BLOCK) {
-                // there could be blocking .execute() calls out there; give them a nudge
-                removeCondition.signalAll();
-            }
-            rejectionPolicy = newPolicy;
+            this.blocking = blocking;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Get the handoff executor which is called when a task cannot be accepted immediately.
+     *
+     * @return the handoff executor
+     */
+    public Executor getHandoffExecutor() {
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            return handoffExecutor;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Set the handoff executor which is called when a task cannot be accepted immediately.
+     *
+     * @param handoffExecutor the handoff executor
+     */
+    public void setHandoffExecutor(final Executor handoffExecutor) {
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
             this.handoffExecutor = handoffExecutor;
         } finally {
             lock.unlock();
-        }
-    }
-
-    // container lifecycle methods
-    public void stop() {
-        shutdown();
-        try {
-            awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-            // todo log if fails?
-        } catch (InterruptedException e) {
-            // todo log it?
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    public void destroy() {
-        // todo is this the right behavior?
-        shutdownNow();
-        try {
-            awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-            // todo log if fails?
-        } catch (InterruptedException e) {
-            // todo log it?
-            Thread.currentThread().interrupt();
         }
     }
 
@@ -505,11 +584,13 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public String getName() {
         return name;
     }
 
-    public int getCurrentPoolSize() {
+    /** {@inheritDoc} */
+    public int getCurrentThreadCount() {
         final Lock lock = this.lock;
         lock.lock();
         try {
@@ -519,7 +600,8 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
-    public int getLargestPoolSize() {
+    /** {@inheritDoc} */
+    public int getLargestThreadCount() {
         final Lock lock = this.lock;
         lock.lock();
         try {
@@ -529,6 +611,7 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    /** {@inheritDoc} */
     public int getRejectedCount() {
         final Lock lock = this.lock;
         lock.lock();
@@ -539,56 +622,59 @@ public final class SimpleQueueExecutor extends AbstractExecutorService implement
         }
     }
 
+    private void runTask(Runnable task) {
+        if (task != null) try {
+            task.run();
+        } catch (Throwable t) {
+            log.errorf(t, "Task execution failed for task %s", task);
+        }
+    }
+
     private class Worker implements Runnable {
 
-        private Runnable first;
+        private volatile Runnable first;
 
         public Worker(final Runnable command) {
             first = command;
         }
 
         public void run() {
-            final Lock lock = SimpleQueueExecutor.this.lock;
-            Runnable task = first;
-            // Release reference to task
-            first = null;
-            lock.lock();
+            final Lock lock = QueueExecutor.this.lock;
             try {
+                Runnable task = first;
+                // Release reference to task
+                first = null;
+                runTask(task);
                 for (;;) {
-                    if (task != null) {
-                        try {
-                            if (interrupt) {
-                                Thread.currentThread().interrupt();
+                    // don't hang on to task while we possibly block waiting for the next one
+                    task = null;
+                    lock.lock();
+                    try {
+                        if (stop) {
+                            // drain queue
+                            if ((task = pollTask()) == null) {
+                                return;
                             }
-                            lock.unlock();
-                            try {
-                                task.run();
-                            } finally {
-                                // this is OK because it's in the finally block after lock.unlock()
-                                //noinspection LockAcquiredButNotSafelyReleased
-                                lock.lock();
+                            Thread.currentThread().interrupt();
+                        } else {
+                            // get next task
+                            if ((task = takeTask()) == null) {
+                                return;
                             }
-                        } catch (Throwable t) {
-                            // todo - log the exception perhaps
                         }
-                        // don't hang on to task while we possibly block down below
-                        task = null;
+                    } finally {
+                        lock.unlock();
                     }
-                    if (stop) {
-                        // drain queue
-                        if ((task = pollTask()) == null) {
-                            return;
-                        }
-                    } else {
-                        // get next task
-                        if ((task = takeTask()) == null) {
-                            return;
-                        }
-                    }
+                    runTask(task);
+                    Thread.interrupted();
                 }
             } finally {
-                workers.remove(Thread.currentThread());
-                lock.unlock();
+                lock.lock();
+                try {
+                    workers.remove(Thread.currentThread());
+                } finally {
+                    lock.unlock();
+                }
             }
         }
     }

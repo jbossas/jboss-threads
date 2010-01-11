@@ -1,8 +1,8 @@
 /*
- * JBoss, Home of Professional Open Source
- * Copyright 2008, JBoss Inc., and individual contributors as indicated
- * by the @authors tag. See the copyright.txt in the distribution for a
- * full listing of individual contributors.
+ * JBoss, Home of Professional Open Source.
+ * Copyright 2010, Red Hat Middleware LLC, and individual contributors
+ * as indicated by the @author tags. See the copyright.txt file in the
+ * distribution for a full listing of individual contributors.
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as
@@ -28,7 +28,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.lang.reflect.Method;
+import org.jboss.threads.management.ThreadPoolExecutorMBean;
 
 /**
  *
@@ -62,67 +62,26 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
 
     public void stop() {
         shutdown();
-        try {
-            awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-            // todo log if fails?
-        } catch (InterruptedException e) {
-            // todo log it?
-            Thread.currentThread().interrupt();
-        }
     }
 
-    public void destroy() {
-        // todo is this the right behavior?
-        shutdownNow();
-        try {
-            awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-            // todo log if fails?
-        } catch (InterruptedException e) {
-            // todo log it?
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private static final Method GET_ALLOW_CORE_THREAD_TIMEOUT;
-    private static final Method SET_ALLOW_CORE_THREAD_TIMEOUT;
-
-    static {
-        Method method = null;
-        try {
-            method = ThreadPoolExecutor.class.getMethod("allowsCoreThreadTimeOut");
-        } catch (NoSuchMethodException e) {
-        }
-        GET_ALLOW_CORE_THREAD_TIMEOUT = method;
-        try {
-            method = ThreadPoolExecutor.class.getMethod("allowCoreThreadTimeOut", boolean.class);
-        } catch (NoSuchMethodException e) {
-        }
-        SET_ALLOW_CORE_THREAD_TIMEOUT = method;
+    public void execute(final Runnable command) {
+        super.execute(command);
     }
 
     public String getName() {
         return name;
     }
 
+    public int getLargestThreadCount() {
+        return super.getLargestPoolSize();
+    }
+
     public boolean isAllowCoreThreadTimeout() {
-        final Method method = GET_ALLOW_CORE_THREAD_TIMEOUT;
-        try {
-            return method != null ? ((Boolean) method.invoke(this)).booleanValue() : false;
-        } catch (Exception e) {
-            return false;
-        }
+        return allowsCoreThreadTimeOut();
     }
 
     public void setAllowCoreThreadTimeout(final boolean allow) {
-        final Method method = SET_ALLOW_CORE_THREAD_TIMEOUT;
-        try {
-            if (method != null) {
-                method.invoke(this, Boolean.valueOf(allow));
-                return;
-            }
-        } catch (Exception e) {
-        }
-        throw new UnsupportedOperationException();
+        setAllowCoreThreadTimeout(allow);
     }
 
     public int getMaxPoolSize() {
@@ -141,7 +100,7 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
         setKeepAliveTime(milliseconds, TimeUnit.MILLISECONDS);
     }
 
-    public int getCurrentPoolSize() {
+    public int getCurrentThreadCount() {
         return getPoolSize();
     }
 
@@ -157,6 +116,14 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
         super.setRejectedExecutionHandler(new CountingRejectHandler(handler));
     }
 
+    public boolean isBlocking() {
+        return false;
+    }
+
+    public void setBlocking(final boolean blocking) {
+        throw new UnsupportedOperationException();
+    }
+
     private final class CountingRejectHandler implements RejectedExecutionHandler {
         private final RejectedExecutionHandler delegate;
 
@@ -170,6 +137,9 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
 
         public void rejectedExecution(final Runnable r, final ThreadPoolExecutor executor) {
             rejectCount.incrementAndGet();
+            if (isShutdown()) {
+                throw new StoppedExecutorException();
+            }
             delegate.rejectedExecution(r, executor);
         }
     }

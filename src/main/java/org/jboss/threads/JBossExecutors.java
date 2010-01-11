@@ -24,6 +24,7 @@ package org.jboss.threads;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadFactory;
@@ -45,14 +46,7 @@ public final class JBossExecutors {
     private JBossExecutors() {}
 
     private static final RuntimePermission MODIFY_THREAD_PERMISSION = new RuntimePermission("modifyThread");
-    private static final RuntimePermission CREATE_PRIVILEGED_THREAD_PERMISSION = new RuntimePermission("createPrivilegedThreads");
     private static final RuntimePermission COPY_CONTEXT_CLASSLOADER_PERMISSION = new RuntimePermission("copyClassLoader");
-
-    private static final AccessControlContext PRIVILEGED_CONTEXT = AccessController.doPrivileged(new PrivilegedAction<AccessControlContext>() {
-        public AccessControlContext run() {
-            return AccessController.getContext();
-        }
-    });
 
     private static final DirectExecutorService DIRECT_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(SimpleDirectExecutor.INSTANCE);
     private static final DirectExecutorService REJECTING_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(RejectingExecutor.INSTANCE);
@@ -174,18 +168,6 @@ public final class JBossExecutors {
     }
 
     /**
-     * Create an executor which executes tasks at the privilege level of this library.
-     * TODO - is this the best approach?
-     *
-     * @param delegate the executor to delegate to at the privileged level
-     * @return the new direct executor
-     */
-    static DirectExecutor highPrivilegeExecutor(final DirectExecutor delegate) {
-        checkAccess(CREATE_PRIVILEGED_THREAD_PERMISSION);
-        return privilegedExecutor(delegate, PRIVILEGED_CONTEXT);
-    }
-
-    /**
      * Create a direct executor which runs tasks with the given context class loader.
      *
      * @param delegate the executor to delegate to
@@ -266,7 +248,7 @@ public final class JBossExecutors {
     }
 
     /**
-     * Create an executor which runs the given initization task before running its given task.
+     * Create an executor which runs the given initialization task before running its given task.
      *
      * @param delegate the delegate direct executor
      * @param initializer the initialization task
@@ -331,7 +313,33 @@ public final class JBossExecutors {
      * @return the executor
      */
     public static Executor threadFactoryExecutor(final ThreadFactory factory) {
-        return new ThreadFactoryExecutor(factory);
+        return new ThreadFactoryExecutor("unnamed", factory, Integer.MAX_VALUE, false);
+    }
+
+    /**
+     * Create an executor that executes each task in a new thread.  By default up to the given number of threads may run
+     * concurrently, after which new tasks will be rejected.
+     *
+     * @param factory the thread factory to use
+     * @param maxThreads the maximum number of allowed threads
+     * @return the executor
+     */
+    public static Executor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads) {
+        return new ThreadFactoryExecutor("unnamed", factory, maxThreads, false);
+    }
+
+    /**
+     * Create an executor that executes each task in a new thread.  By default up to the given number of threads may run
+     * concurrently, after which the caller will block or new tasks will be rejected, according to the setting of the
+     * {@code blocking} parameter.
+     *
+     * @param factory the thread factory to use
+     * @param maxThreads the maximum number of allowed threads
+     * @param blocking {@code true} if the submitter should block when the maximum number of threads has been reached
+     * @return the executor
+     */
+    public static Executor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads, final boolean blocking) {
+        return new ThreadFactoryExecutor("unnamed", factory, maxThreads, blocking);
     }
 
     // ==================================================
@@ -639,6 +647,16 @@ public final class JBossExecutors {
         return new LoggingUncaughtExceptionHandler(log);
     }
 
+    /**
+     * Get an uncaught exception handler which logs to the given logger.
+     *
+     * @param categoryName the name of the logger category to log to
+     * @return the handler
+     */
+    public static Thread.UncaughtExceptionHandler loggingExceptionHandler(final String categoryName) {
+        return new LoggingUncaughtExceptionHandler(Logger.getLogger(categoryName));
+    }
+
     private static final Thread.UncaughtExceptionHandler LOGGING_HANDLER = loggingExceptionHandler(THREAD_ERROR_LOGGER);
 
     /**
@@ -746,6 +764,45 @@ public final class JBossExecutors {
      */
     public static <A> DirectExecutor notifyingDirectExecutor(DirectExecutor delegate, TaskNotifier<Runnable, ? super A> notifier, A attachment) {
         return new NotifyingDirectExecutor<A>(delegate, notifier, attachment);
+    }
+
+    /**
+     * Execute a task uninterruptibly.
+     *
+     * @param executor the executor to delegate to
+     * @param task the task to execute
+     * @throws RejectedExecutionException if the task was rejected by the executor
+     */
+    public static void executeUninterruptibly(Executor executor, Runnable task) throws RejectedExecutionException {
+        boolean intr = Thread.interrupted();
+        try {
+            for (;;) {
+                try {
+                    executor.execute(task);
+                    return;
+                } catch (ExecutionInterruptedException e) {
+                    intr |= Thread.interrupted();
+                }
+            }
+        } finally {
+            if (intr) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /**
+     * Get an executor which executes tasks uninterruptibly in the event of blocking.
+     *
+     * @param delegate the delegate executor
+     * @return the uninterruptible executor
+     */
+    public static Executor uninterruptibleExecutor(final Executor delegate) {
+        if (delegate instanceof UninterruptibleExecutor) {
+            return delegate;
+        } else {
+            return new UninterruptibleExecutor(delegate);
+        }
     }
 
     /**

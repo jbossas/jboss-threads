@@ -20,33 +20,17 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
 
-package org.jboss.threads;
+package org.jboss.threads.management;
 
 /**
  *
  */
-public interface ThreadPoolExecutorMBean {
-    String getName();
-
-    boolean isAllowCoreThreadTimeout();
-
-    void setAllowCoreThreadTimeout(boolean allow);
-
+public interface ThreadPoolExecutorMBean extends ThreadExecutorMBean {
     int getCorePoolSize();
 
     void setCorePoolSize(int newSize);
 
-    int getMaxPoolSize();
-
-    void setMaxPoolSize(int newSize);
-
     long getKeepAliveTime();
 
     void setKeepAliveTime(long milliseconds);
-
-    int getCurrentPoolSize();
-
-    int getLargestPoolSize();
-
-    int getRejectedCount();
 }
