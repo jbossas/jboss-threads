@@ -27,9 +27,9 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.jboss.threads.management.ThreadExecutorMBean;
+import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
 
-class ThreadFactoryExecutor implements Executor, ThreadExecutorMBean {
+class ThreadFactoryExecutor implements Executor, BoundedThreadPoolExecutorMBean {
 
     private final ThreadFactory factory;
     private final Semaphore limitSemaphore;
@@ -145,6 +145,16 @@ class ThreadFactoryExecutor implements Executor, ThreadExecutorMBean {
 
     public int getRejectedCount() {
         return rejected.get();
+    }
+
+    public long getKeepAliveTime() {
+        return 0L;
+    }
+
+    public void setKeepAliveTime(final long milliseconds) {
+        if (milliseconds != 0L) {
+            throw new IllegalArgumentException("Keep-alive may only be set to 0ms");
+        }
     }
 
     public String toString() {

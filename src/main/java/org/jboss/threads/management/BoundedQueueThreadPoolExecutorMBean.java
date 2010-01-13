@@ -30,9 +30,7 @@ public interface BoundedQueueThreadPoolExecutorMBean extends BoundedThreadPoolEx
 
     void setAllowCoreThreadTimeout(boolean allow);
 
-    int getMaxPoolSize();
+    int getCoreThreads();
 
-    void setMaxPoolSize(int newSize);
-
-
+    void setCoreThreads(int newSize);
 }

@@ -27,6 +27,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -74,7 +75,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
      * Configuration value.
      * Protected by {@link #lock}
      */
-    private long idleTimeout;
+    private long keepAliveTime;
 
     /**
      * Configuration value.
@@ -96,31 +97,11 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     private int largestPoolSize;
     private int rejectedCount;
 
-    public QueuelessExecutor(final ThreadFactory threadFactory, final DirectExecutor taskExecutor, final Executor handoffExecutor, final long idleTimeout) {
+    public QueuelessExecutor(final ThreadFactory threadFactory, final DirectExecutor taskExecutor, final Executor handoffExecutor, final long keepAliveTime) {
         this.threadFactory = threadFactory;
         this.taskExecutor = taskExecutor;
         this.handoffExecutor = handoffExecutor;
-        this.idleTimeout = idleTimeout;
-    }
-
-    public long getIdleTimeout() {
-        final Lock lock = this.lock;
-        lock.lock();
-        try {
-            return idleTimeout;
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public void setIdleTimeout(final long idleTimeout) {
-        final Lock lock = this.lock;
-        lock.lock();
-        try {
-            this.idleTimeout = idleTimeout;
-        } finally {
-            lock.unlock();
-        }
+        this.keepAliveTime = keepAliveTime;
     }
 
     public int getMaxThreads() {
@@ -133,37 +114,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         }
     }
 
-    public void setMaxThreads(final int maxThreads) {
-        final Lock lock = this.lock;
-        lock.lock();
-        try {
-            this.maxThreads = maxThreads;
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public int getRunningThreads() {
-        final Lock lock = this.lock;
-        lock.lock();
-        try {
-            return runningThreads.size();
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public int getCorePoolSize() {
-        final Lock lock = this.lock;
-        lock.lock();
-        try {
-            return maxThreads;
-        } finally {
-            lock.unlock();
-        }
-    }
-
-    public void setCorePoolSize(final int newSize) {
+    public void setMaxThreads(final int newSize) {
         if (newSize < 1) {
             throw new IllegalArgumentException("Pool size must be at least 1");
         }
@@ -180,7 +131,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         final Lock lock = this.lock;
         lock.lock();
         try {
-            return idleTimeout;
+            return keepAliveTime;
         } finally {
             lock.unlock();
         }
@@ -190,7 +141,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         final Lock lock = this.lock;
         lock.lock();
         try {
-            idleTimeout = milliseconds;
+            keepAliveTime = milliseconds;
         } finally {
             lock.unlock();
         }
@@ -403,6 +354,8 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         }
         if (executor != null) {
             executor.execute(command);
+        } else {
+            throw new RejectedExecutionException();
         }
     }
 
@@ -423,7 +376,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         }
 
         private boolean awaitTimed(Condition condition, long idleSince) {
-            final long end = clipHigh(System.currentTimeMillis() + idleTimeout);
+            final long end = clipHigh(System.currentTimeMillis() + keepAliveTime);
             long remaining = end - idleSince;
             if (remaining < 0L) {
                 return false;

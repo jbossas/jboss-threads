@@ -56,8 +56,8 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
     private final DirectExecutor taskExecutor;
 
     // all protected by poolLock...
-    private int corePoolSize;
-    private int maxPoolSize;
+    private int coreThreads;
+    private int maxThreads;
     private int largestPoolSize;
     private int rejectCount;
     private boolean allowCoreThreadTimeout;
@@ -76,8 +76,8 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
     /**
      * Create a new instance.
      *
-     * @param corePoolSize the number of threads to create before enqueueing tasks
-     * @param maxPoolSize the maximum number of threads to create
+     * @param coreThreads the number of threads to create before enqueueing tasks
+     * @param maxThreads the maximum number of threads to create
      * @param keepAliveTime the amount of time that an idle thread should remain active
      * @param keepAliveTimeUnit the unit of time for {@code keepAliveTime}
      * @param queue the queue to use for tasks
@@ -86,7 +86,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
      * @param handoffExecutor the executor which is called when blocking is disabled and a task cannot be accepted, or {@code null} to reject the task
      * @param taskExecutor the executor to use to execute tasks
      */
-    public QueueExecutor(final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor, final DirectExecutor taskExecutor) {
+    public QueueExecutor(final int coreThreads, final int maxThreads, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor, final DirectExecutor taskExecutor) {
         if (threadFactory == null) {
             throw new NullPointerException("threadFactory is null");
         }
@@ -103,8 +103,8 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
             // configurable...
             this.keepAliveTime = keepAliveTime;
             this.keepAliveTimeUnit = keepAliveTimeUnit;
-            this.corePoolSize = corePoolSize;
-            this.maxPoolSize = maxPoolSize > corePoolSize ? maxPoolSize : corePoolSize;
+            this.coreThreads = coreThreads;
+            this.maxThreads = maxThreads > coreThreads ? maxThreads : coreThreads;
             this.queue = queue;
             this.blocking = blocking;
             this.handoffExecutor = handoffExecutor;
@@ -117,8 +117,8 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
     /**
      * Create a new instance.
      *
-     * @param corePoolSize the number of threads to create before enqueueing tasks
-     * @param maxPoolSize the maximum number of threads to create
+     * @param coreThreads the number of threads to create before enqueueing tasks
+     * @param maxThreads the maximum number of threads to create
      * @param keepAliveTime the amount of time that an idle thread should remain active
      * @param keepAliveTimeUnit the unit of time for {@code keepAliveTime}
      * @param queue the queue to use for tasks
@@ -126,15 +126,15 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
      * @param blocking {@code true} if the executor should block when the queue is full and no threads are available, {@code false} to use the handoff executor
      * @param handoffExecutor the executor which is called when blocking is disabled and a task cannot be accepted, or {@code null} to reject the task
      */
-    public QueueExecutor(final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
-        this(corePoolSize, maxPoolSize, keepAliveTime, keepAliveTimeUnit, queue, threadFactory, blocking, handoffExecutor, JBossExecutors.directExecutor());
+    public QueueExecutor(final int coreThreads, final int maxThreads, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
+        this(coreThreads, maxThreads, keepAliveTime, keepAliveTimeUnit, queue, threadFactory, blocking, handoffExecutor, JBossExecutors.directExecutor());
     }
 
     /**
      * Create a new instance.
      *
-     * @param corePoolSize the number of threads to create before enqueueing tasks
-     * @param maxPoolSize the maximum number of threads to create
+     * @param coreThreads the number of threads to create before enqueueing tasks
+     * @param maxThreads the maximum number of threads to create
      * @param keepAliveTime the amount of time that an idle thread should remain active
      * @param keepAliveTimeUnit the unit of time for {@code keepAliveTime}
      * @param queueLength the fixed queue length to use for tasks
@@ -142,8 +142,8 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
      * @param blocking {@code true} if the executor should block when the queue is full and no threads are available, {@code false} to use the handoff executor
      * @param handoffExecutor the executor which is called when blocking is disabled and a task cannot be accepted, or {@code null} to reject the task
      */
-    public QueueExecutor(final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final int queueLength, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
-        this(corePoolSize, maxPoolSize, keepAliveTime, keepAliveTimeUnit, new ArrayQueue<Runnable>(queueLength), threadFactory, blocking, handoffExecutor);
+    public QueueExecutor(final int coreThreads, final int maxThreads, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final int queueLength, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
+        this(coreThreads, maxThreads, keepAliveTime, keepAliveTimeUnit, new ArrayQueue<Runnable>(queueLength), threadFactory, blocking, handoffExecutor);
     }
 
     /**
@@ -165,7 +165,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
                 }
                 // Try core thread first, then queue, then extra thread
                 final int count = threadCount;
-                if (count < corePoolSize) {
+                if (count < coreThreads) {
                     startNewThread(task);
                     threadCount = count + 1;
                     return;
@@ -177,7 +177,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
                     return;
                 }
                 // extra threads?
-                if (count < maxPoolSize) {
+                if (count < maxThreads) {
                     startNewThread(task);
                     threadCount = count + 1;
                     return;
@@ -317,31 +317,31 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
     }
 
     /** {@inheritDoc} */
-    public int getCorePoolSize() {
+    public int getCoreThreads() {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            return corePoolSize;
+            return coreThreads;
         } finally {
             lock.unlock();
         }
     }
 
     /** {@inheritDoc} */
-    public void setCorePoolSize(final int corePoolSize) {
+    public void setCoreThreads(final int coreThreads) {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            final int oldLimit = this.corePoolSize;
-            if (maxPoolSize < corePoolSize) {
+            final int oldLimit = this.coreThreads;
+            if (maxThreads < coreThreads) {
                 // don't let the max thread limit be less than the core thread limit.
                 // the called method will signal as needed
-                setMaxPoolSize(corePoolSize);
-            } else if (oldLimit < corePoolSize) {
+                setMaxThreads(coreThreads);
+            } else if (oldLimit < coreThreads) {
                 // we're growing the number of core threads
                 // therefore signal anyone waiting to add tasks; there might be more threads to add
                 removeCondition.signalAll();
-            } else if (oldLimit > corePoolSize) {
+            } else if (oldLimit > coreThreads) {
                 // we're shrinking the number of core threads
                 // therefore signal anyone waiting to remove tasks so the pool can shrink properly
                 enqueueCondition.signalAll();
@@ -349,38 +349,38 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
                 // we aren't changing anything...
                 return;
             }
-            this.corePoolSize = corePoolSize;
+            this.coreThreads = coreThreads;
         } finally {
             lock.unlock();
         }
     }
 
     /** {@inheritDoc} */
-    public int getMaxPoolSize() {
+    public int getMaxThreads() {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            return maxPoolSize;
+            return maxThreads;
         } finally {
             lock.unlock();
         }
     }
 
     /** {@inheritDoc} */
-    public void setMaxPoolSize(final int maxPoolSize) {
+    public void setMaxThreads(final int maxThreads) {
         final Lock lock = this.lock;
         lock.lock();
         try {
-            final int oldLimit = this.maxPoolSize;
-            if (maxPoolSize < corePoolSize) {
+            final int oldLimit = this.maxThreads;
+            if (maxThreads < coreThreads) {
                 // don't let the max thread limit be less than the core thread limit.
                 // the called method will signal as needed
-                setCorePoolSize(maxPoolSize);
-            } else if (oldLimit < maxPoolSize) {
+                setCoreThreads(maxThreads);
+            } else if (oldLimit < maxThreads) {
                 // we're growing the number of extra threads
                 // therefore signal anyone waiting to add tasks; there might be more threads to add
                 removeCondition.signalAll();
-            } else if (oldLimit > maxPoolSize) {
+            } else if (oldLimit > maxThreads) {
                 // we're shrinking the number of extra threads
                 // therefore signal anyone waiting to remove tasks so the pool can shrink properly
                 enqueueCondition.signalAll();
@@ -388,7 +388,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
                 // we aren't changing anything...
                 return;
             }
-            this.maxPoolSize = maxPoolSize;
+            this.maxThreads = maxThreads;
         } finally {
             lock.unlock();
         }
@@ -533,9 +533,9 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
                 for (;;) {
                     // these parameters may change on each iteration
                     final int threadCount = this.threadCount;
-                    final int coreThreadLimit = corePoolSize;
+                    final int coreThreadLimit = coreThreads;
                     final boolean allowCoreThreadTimeout = this.allowCoreThreadTimeout;
-                    if (stop || threadCount > maxPoolSize) {
+                    if (stop || threadCount > maxThreads) {
                         // too many threads.  Handle a task if there is one, otherwise exit
                         return pollTask();
                     } else if (!allowCoreThreadTimeout && threadCount < coreThreadLimit) {

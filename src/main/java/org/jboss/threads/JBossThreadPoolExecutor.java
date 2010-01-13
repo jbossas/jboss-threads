@@ -73,12 +73,20 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
         setAllowCoreThreadTimeout(allow);
     }
 
-    public int getMaxPoolSize() {
+    public int getMaxThreads() {
         return getMaximumPoolSize();
     }
 
-    public void setMaxPoolSize(final int newSize) {
+    public void setMaxThreads(final int newSize) {
         setMaximumPoolSize(newSize);
+    }
+
+    public int getCoreThreads() {
+        return getCorePoolSize();
+    }
+
+    public void setCoreThreads(final int newSize) {
+        setCorePoolSize(newSize);
     }
 
     public long getKeepAliveTime() {

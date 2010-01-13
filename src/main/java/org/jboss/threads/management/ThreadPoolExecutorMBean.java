@@ -26,9 +26,9 @@ package org.jboss.threads.management;
  *
  */
 public interface ThreadPoolExecutorMBean extends ThreadExecutorMBean {
-    int getCorePoolSize();
+    int getMaxThreads();
 
-    void setCorePoolSize(int newSize);
+    void setMaxThreads(int newSize);
 
     long getKeepAliveTime();
 

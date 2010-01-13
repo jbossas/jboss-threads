@@ -80,6 +80,14 @@ public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolE
         return getLargestPoolSize();
     }
 
+    public int getMaxThreads() {
+        return getCorePoolSize();
+    }
+
+    public void setMaxThreads(final int newSize) {
+        setCorePoolSize(newSize);
+    }
+
     public RejectedExecutionHandler getRejectedExecutionHandler() {
         return ((CountingRejectHandler)super.getRejectedExecutionHandler()).getDelegate();
     }
