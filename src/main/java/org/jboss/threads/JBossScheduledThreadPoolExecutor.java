@@ -22,63 +22,36 @@
 
 package org.jboss.threads;
 
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
+import org.jboss.threads.management.ThreadPoolExecutorMBean;
 
-/**
- *
- */
-public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements BoundedQueueThreadPoolExecutorMBean {
+public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolExecutor implements ThreadPoolExecutorMBean {
 
     private final AtomicInteger rejectCount = new AtomicInteger();
 
-    public JBossThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue) {
-        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue);
+    public JBossScheduledThreadPoolExecutor(int corePoolSize) {
+        super(corePoolSize);
         setRejectedExecutionHandler(super.getRejectedExecutionHandler());
     }
 
-    public JBossThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory) {
-        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory);
+    public JBossScheduledThreadPoolExecutor(int corePoolSize, ThreadFactory threadFactory) {
+        super(corePoolSize, threadFactory);
         setRejectedExecutionHandler(super.getRejectedExecutionHandler());
     }
 
-    public JBossThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, RejectedExecutionHandler handler) {
-        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue);
+    public JBossScheduledThreadPoolExecutor(int corePoolSize, RejectedExecutionHandler handler) {
+        super(corePoolSize);
         setRejectedExecutionHandler(handler);
     }
 
-    public JBossThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory, RejectedExecutionHandler handler) {
-        super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory);
+    public JBossScheduledThreadPoolExecutor(int corePoolSize, ThreadFactory threadFactory, RejectedExecutionHandler handler) {
+        super(corePoolSize, threadFactory);
         setRejectedExecutionHandler(handler);
-    }
-
-    public void execute(final Runnable command) {
-        super.execute(command);
-    }
-
-    public int getLargestThreadCount() {
-        return super.getLargestPoolSize();
-    }
-
-    public boolean isAllowCoreThreadTimeout() {
-        return allowsCoreThreadTimeOut();
-    }
-
-    public void setAllowCoreThreadTimeout(final boolean allow) {
-        setAllowCoreThreadTimeout(allow);
-    }
-
-    public int getMaxPoolSize() {
-        return getMaximumPoolSize();
-    }
-
-    public void setMaxPoolSize(final int newSize) {
-        setMaximumPoolSize(newSize);
     }
 
     public long getKeepAliveTime() {
@@ -86,23 +59,25 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
     }
 
     public void setKeepAliveTime(final long milliseconds) {
-        setKeepAliveTime(milliseconds, TimeUnit.MILLISECONDS);
+        super.setKeepAliveTime(milliseconds, TimeUnit.MILLISECONDS);
+        super.allowCoreThreadTimeOut(milliseconds < Long.MAX_VALUE);
     }
 
-    public int getCurrentThreadCount() {
-        return getPoolSize();
+    public void setKeepAliveTime(final long time, final TimeUnit unit) {
+        super.setKeepAliveTime(time, unit);
+        super.allowCoreThreadTimeOut(time < Long.MAX_VALUE);
     }
 
     public int getRejectedCount() {
         return rejectCount.get();
     }
 
-    public boolean isBlocking() {
-        return false;
+    public int getCurrentThreadCount() {
+        return getActiveCount();
     }
 
-    public void setBlocking(final boolean blocking) {
-        throw new UnsupportedOperationException();
+    public int getLargestThreadCount() {
+        return getLargestPoolSize();
     }
 
     public RejectedExecutionHandler getRejectedExecutionHandler() {

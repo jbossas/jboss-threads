@@ -45,7 +45,6 @@ import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 public final class QueueExecutor extends AbstractExecutorService implements ExecutorService, BoundedQueueThreadPoolExecutorMBean {
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
 
-    private final String name;
     private final Lock lock = new ReentrantLock();
     // signal when a task is written to the queue
     private final Condition enqueueCondition = lock.newCondition();
@@ -54,6 +53,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
     // signalled when threads terminate
     private final Condition threadExitCondition = lock.newCondition();
     private final ThreadFactory threadFactory;
+    private final DirectExecutor taskExecutor;
 
     // all protected by poolLock...
     private int corePoolSize;
@@ -70,14 +70,53 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
     private Set<Thread> workers = new HashSet<Thread>();
 
     private boolean stop;
-    private boolean interrupt;
 
     private Queue<Runnable> queue;
 
     /**
      * Create a new instance.
      *
-     * @param name the name of the executor
+     * @param corePoolSize the number of threads to create before enqueueing tasks
+     * @param maxPoolSize the maximum number of threads to create
+     * @param keepAliveTime the amount of time that an idle thread should remain active
+     * @param keepAliveTimeUnit the unit of time for {@code keepAliveTime}
+     * @param queue the queue to use for tasks
+     * @param threadFactory the thread factory to use for new threads
+     * @param blocking {@code true} if the executor should block when the queue is full and no threads are available, {@code false} to use the handoff executor
+     * @param handoffExecutor the executor which is called when blocking is disabled and a task cannot be accepted, or {@code null} to reject the task
+     * @param taskExecutor the executor to use to execute tasks
+     */
+    public QueueExecutor(final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor, final DirectExecutor taskExecutor) {
+        if (threadFactory == null) {
+            throw new NullPointerException("threadFactory is null");
+        }
+        if (queue == null) {
+            throw new NullPointerException("queue is null");
+        }
+        if (keepAliveTimeUnit == null) {
+            throw new NullPointerException("keepAliveTimeUnit is null");
+        }
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            this.threadFactory = threadFactory;
+            // configurable...
+            this.keepAliveTime = keepAliveTime;
+            this.keepAliveTimeUnit = keepAliveTimeUnit;
+            this.corePoolSize = corePoolSize;
+            this.maxPoolSize = maxPoolSize > corePoolSize ? maxPoolSize : corePoolSize;
+            this.queue = queue;
+            this.blocking = blocking;
+            this.handoffExecutor = handoffExecutor;
+            this.taskExecutor = taskExecutor;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Create a new instance.
+     *
      * @param corePoolSize the number of threads to create before enqueueing tasks
      * @param maxPoolSize the maximum number of threads to create
      * @param keepAliveTime the amount of time that an idle thread should remain active
@@ -87,38 +126,13 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
      * @param blocking {@code true} if the executor should block when the queue is full and no threads are available, {@code false} to use the handoff executor
      * @param handoffExecutor the executor which is called when blocking is disabled and a task cannot be accepted, or {@code null} to reject the task
      */
-    public QueueExecutor(final String name, final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
-        this.name = name;
-        if (threadFactory == null) {
-            throw new NullPointerException("threadFactory is null");
-        }
-        if (queue == null) {
-            throw new NullPointerException("queue is null");
-        }
-        if (keepAliveTimeUnit == null) {
-            throw new NullPointerException("keepAliveTimeUnit is null");
-        }
-        final Lock lock = this.lock;
-        lock.lock();
-        try {
-            this.threadFactory = threadFactory;
-            // configurable...
-            this.keepAliveTime = keepAliveTime;
-            this.keepAliveTimeUnit = keepAliveTimeUnit;
-            this.corePoolSize = corePoolSize;
-            this.maxPoolSize = maxPoolSize;
-            this.queue = queue;
-            this.blocking = blocking;
-            this.handoffExecutor = handoffExecutor;
-        } finally {
-            lock.unlock();
-        }
+    public QueueExecutor(final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
+        this(corePoolSize, maxPoolSize, keepAliveTime, keepAliveTimeUnit, queue, threadFactory, blocking, handoffExecutor, JBossExecutors.directExecutor());
     }
 
     /**
      * Create a new instance.
      *
-     * @param name the name of the executor
      * @param corePoolSize the number of threads to create before enqueueing tasks
      * @param maxPoolSize the maximum number of threads to create
      * @param keepAliveTime the amount of time that an idle thread should remain active
@@ -128,32 +142,8 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
      * @param blocking {@code true} if the executor should block when the queue is full and no threads are available, {@code false} to use the handoff executor
      * @param handoffExecutor the executor which is called when blocking is disabled and a task cannot be accepted, or {@code null} to reject the task
      */
-    public QueueExecutor(final String name, final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final int queueLength, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
-        this.name = name;
-        if (threadFactory == null) {
-            throw new NullPointerException("threadFactory is null");
-        }
-        if (queue == null) {
-            throw new NullPointerException("queue is null");
-        }
-        if (keepAliveTimeUnit == null) {
-            throw new NullPointerException("keepAliveTimeUnit is null");
-        }
-        final Lock lock = this.lock;
-        lock.lock();
-        try {
-            this.threadFactory = threadFactory;
-            // configurable...
-            this.keepAliveTime = keepAliveTime;
-            this.keepAliveTimeUnit = keepAliveTimeUnit;
-            this.corePoolSize = corePoolSize;
-            this.maxPoolSize = maxPoolSize;
-            queue = new ArrayQueue<Runnable>(queueLength);
-            this.blocking = blocking;
-            this.handoffExecutor = handoffExecutor;
-        } finally {
-            lock.unlock();
-        }
+    public QueueExecutor(final int corePoolSize, final int maxPoolSize, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final int queueLength, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor) {
+        this(corePoolSize, maxPoolSize, keepAliveTime, keepAliveTimeUnit, new ArrayQueue<Runnable>(queueLength), threadFactory, blocking, handoffExecutor);
     }
 
     /**
@@ -585,11 +575,6 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
     }
 
     /** {@inheritDoc} */
-    public String getName() {
-        return name;
-    }
-
-    /** {@inheritDoc} */
     public int getCurrentThreadCount() {
         final Lock lock = this.lock;
         lock.lock();
@@ -624,7 +609,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
 
     private void runTask(Runnable task) {
         if (task != null) try {
-            task.run();
+            taskExecutor.execute(task);
         } catch (Throwable t) {
             log.errorf(t, "Task execution failed for task %s", task);
         }

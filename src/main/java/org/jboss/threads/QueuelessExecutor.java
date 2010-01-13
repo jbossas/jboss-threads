@@ -45,7 +45,6 @@ import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
 public final class QueuelessExecutor extends AbstractExecutorService implements ExecutorService, BoundedThreadPoolExecutorMBean  {
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
 
-    private final String name;
     private final ThreadFactory threadFactory;
     private final DirectExecutor taskExecutor;
 
@@ -97,8 +96,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     private int largestPoolSize;
     private int rejectedCount;
 
-    public QueuelessExecutor(final String name, final ThreadFactory threadFactory, final DirectExecutor taskExecutor, final Executor handoffExecutor, final long idleTimeout) {
-        this.name = name;
+    public QueuelessExecutor(final ThreadFactory threadFactory, final DirectExecutor taskExecutor, final Executor handoffExecutor, final long idleTimeout) {
         this.threadFactory = threadFactory;
         this.taskExecutor = taskExecutor;
         this.handoffExecutor = handoffExecutor;
@@ -153,10 +151,6 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         } finally {
             lock.unlock();
         }
-    }
-
-    public String getName() {
-        return name;
     }
 
     public int getCorePoolSize() {

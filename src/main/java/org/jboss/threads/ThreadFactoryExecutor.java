@@ -33,8 +33,8 @@ class ThreadFactoryExecutor implements Executor, ThreadExecutorMBean {
 
     private final ThreadFactory factory;
     private final Semaphore limitSemaphore;
+    private final DirectExecutor taskExecutor;
 
-    private final String name;
     private final Object lock = new Object();
     private int maxThreads;
     private int largestThreadCount;
@@ -42,11 +42,11 @@ class ThreadFactoryExecutor implements Executor, ThreadExecutorMBean {
     private final AtomicInteger rejected = new AtomicInteger();
     private volatile boolean blocking;
 
-    ThreadFactoryExecutor(final String name, final ThreadFactory factory, int maxThreads, boolean blocking) {
-        this.name = name;
+    ThreadFactoryExecutor(final ThreadFactory factory, int maxThreads, boolean blocking, final DirectExecutor taskExecutor) {
         this.factory = factory;
         this.maxThreads = maxThreads;
         this.blocking = blocking;
+        this.taskExecutor = taskExecutor;
         limitSemaphore = new Semaphore(maxThreads);
     }
 
@@ -100,7 +100,7 @@ class ThreadFactoryExecutor implements Executor, ThreadExecutorMBean {
                                     largestThreadCount = t;
                                 }
                             }
-                            command.run();
+                            taskExecutor.execute(command);
                             synchronized (lock) {
                                 currentThreadCount--;
                             }
@@ -141,10 +141,6 @@ class ThreadFactoryExecutor implements Executor, ThreadExecutorMBean {
         synchronized (lock) {
             return currentThreadCount;
         }
-    }
-
-    public String getName() {
-        return name;
     }
 
     public int getRejectedCount() {

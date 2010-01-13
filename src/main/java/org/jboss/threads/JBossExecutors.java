@@ -224,6 +224,18 @@ public final class JBossExecutors {
     }
 
     /**
+     * Create a direct executor which consumes and logs errors that are thrown.
+     *
+     * @param delegate the executor to delegate to
+     * @param log the logger to which exceptions are written
+     * @param level the level at which to log exceptions
+     * @return the new direct executor
+     */
+    public static DirectExecutor exceptionLoggingExecutor(final DirectExecutor delegate, final Logger log, final Logger.Level level) {
+        return new ExceptionLoggingExecutor(delegate, log, level);
+    }
+
+    /**
      * Create a direct executor which consumes and logs errors that are thrown to the default thread error category
      * {@code "org.jboss.threads.errors"}.
      *
@@ -313,7 +325,7 @@ public final class JBossExecutors {
      * @return the executor
      */
     public static Executor threadFactoryExecutor(final ThreadFactory factory) {
-        return new ThreadFactoryExecutor("unnamed", factory, Integer.MAX_VALUE, false);
+        return new ThreadFactoryExecutor(factory, Integer.MAX_VALUE, false, directExecutor());
     }
 
     /**
@@ -325,7 +337,7 @@ public final class JBossExecutors {
      * @return the executor
      */
     public static Executor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads) {
-        return new ThreadFactoryExecutor("unnamed", factory, maxThreads, false);
+        return new ThreadFactoryExecutor(factory, maxThreads, false, directExecutor());
     }
 
     /**
@@ -339,7 +351,22 @@ public final class JBossExecutors {
      * @return the executor
      */
     public static Executor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads, final boolean blocking) {
-        return new ThreadFactoryExecutor("unnamed", factory, maxThreads, blocking);
+        return new ThreadFactoryExecutor(factory, maxThreads, blocking, directExecutor());
+    }
+
+    /**
+     * Create an executor that executes each task in a new thread.  By default up to the given number of threads may run
+     * concurrently, after which the caller will block or new tasks will be rejected, according to the setting of the
+     * {@code blocking} parameter.
+     *
+     * @param factory the thread factory to use
+     * @param maxThreads the maximum number of allowed threads
+     * @param blocking {@code true} if the submitter should block when the maximum number of threads has been reached
+     * @param taskExecutor the executor which should run each task
+     * @return the executor
+     */
+    public static Executor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads, final boolean blocking, final DirectExecutor taskExecutor) {
+        return new ThreadFactoryExecutor(factory, maxThreads, blocking, taskExecutor);
     }
 
     // ==================================================

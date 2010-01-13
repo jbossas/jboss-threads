@@ -28,7 +28,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.LinkedList;
 
 /**
  *
@@ -62,7 +61,7 @@ public final class ThreadPoolTestCase extends TestCase {
         final int cnt = 100;
         final CountDownLatch taskUnfreezer = new CountDownLatch(1);
         final CountDownLatch taskFinishLine = new CountDownLatch(cnt);
-        final ExecutorService simpleQueueExecutor = new QueueExecutor("test-pool", 5, 5, 500L, TimeUnit.MILLISECONDS, new LinkedList<Runnable>(), threadFactory, true, null);
+        final ExecutorService simpleQueueExecutor = new QueueExecutor(5, 5, 500L, TimeUnit.MILLISECONDS, 1000, threadFactory, true, null);
         for (int i = 0; i < cnt; i ++) {
             simpleQueueExecutor.execute(new SimpleTask(taskUnfreezer, taskFinishLine));
         }
@@ -77,7 +76,7 @@ public final class ThreadPoolTestCase extends TestCase {
             });
             fail("Task not rejected after shutdown");
         } catch (Throwable t) {
-            assertEquals(RejectedExecutionException.class, t.getClass());
+            assertTrue(t instanceof RejectedExecutionException);
         }
         assertTrue(simpleQueueExecutor.awaitTermination(800L, TimeUnit.MILLISECONDS));
     }
@@ -87,7 +86,7 @@ public final class ThreadPoolTestCase extends TestCase {
         final AtomicBoolean ran = new AtomicBoolean();
 
         final CountDownLatch startLatch = new CountDownLatch(1);
-        final ExecutorService simpleQueueExecutor = new QueueExecutor("test-pool", 5, 5, 500L, TimeUnit.MILLISECONDS, new LinkedList<Runnable>(), threadFactory, true, null);
+        final ExecutorService simpleQueueExecutor = new QueueExecutor(5, 5, 500L, TimeUnit.MILLISECONDS, 1000, threadFactory, true, null);
         simpleQueueExecutor.execute(new Runnable() {
             public void run() {
                 try {
@@ -121,7 +120,7 @@ public final class ThreadPoolTestCase extends TestCase {
         final int cnt = queueSize + coreThreads + extraThreads;
         final CountDownLatch taskUnfreezer = new CountDownLatch(1);
         final CountDownLatch taskFinishLine = new CountDownLatch(cnt);
-        final ExecutorService simpleQueueExecutor = new QueueExecutor("test-pool", coreThreads, coreThreads + extraThreads, 500L, TimeUnit.MILLISECONDS, new ArrayQueue<Runnable>(queueSize), threadFactory, true, null);
+        final ExecutorService simpleQueueExecutor = new QueueExecutor(coreThreads, coreThreads + extraThreads, 500L, TimeUnit.MILLISECONDS, new ArrayQueue<Runnable>(queueSize), threadFactory, true, null);
         for (int i = 0; i < cnt; i ++) {
             simpleQueueExecutor.execute(new SimpleTask(taskUnfreezer, taskFinishLine));
         }

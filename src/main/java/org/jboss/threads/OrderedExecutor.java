@@ -82,7 +82,7 @@ public final class OrderedExecutor implements Executor {
     }
 
     /**
-     * Construct a new instance using a bounded FIFO queue of the given size and a handoff reject policy
+     * Construct a new instance using a bounded FIFO queue of the given size and a handoff reject policy.
      *
      * @param parent the parent executor
      * @param queueLength the fixed length of the queue to use to hold tasks
@@ -114,12 +114,26 @@ public final class OrderedExecutor implements Executor {
     }
 
     /**
+     * Construct a new instance using a bounded FIFO queue of the given size and a handoff reject policy.
+     *
+     * @param parent the parent executor
+     * @param queueLength the fixed length of the queue to use to hold tasks
+     * @param blocking {@code true} if rejected tasks should block, {@code false} if rejected tasks should be handed off
+     * @param handoffExecutor the executor to hand tasks to if the queue is full
+     */
+    public OrderedExecutor(final Executor parent, final int queueLength, final boolean blocking, final Executor handoffExecutor) {
+        this(parent, new ArrayQueue<Runnable>(queueLength), blocking, handoffExecutor);
+    }
+
+
+
+    /**
      * Run a task.
      *
      * @param command the task to run.
      */
     public void execute(Runnable command) {
-        final Executor executor;
+        Executor executor;
         OUT: for (;;) {
             lock.lock();
             try {

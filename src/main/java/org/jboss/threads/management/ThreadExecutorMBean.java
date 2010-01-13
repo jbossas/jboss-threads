@@ -26,7 +26,6 @@ package org.jboss.threads.management;
  *
  */
 public interface ThreadExecutorMBean {
-    String getName();
 
     int getRejectedCount();
 

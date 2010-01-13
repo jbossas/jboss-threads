@@ -28,17 +28,23 @@ class ExceptionLoggingExecutor implements DirectExecutor {
 
     private final DirectExecutor delegate;
     private final Logger log;
+    private final Logger.Level level;
 
-    ExceptionLoggingExecutor(final DirectExecutor delegate, final Logger log) {
+    ExceptionLoggingExecutor(final DirectExecutor delegate, final Logger log, final Logger.Level level) {
         this.delegate = delegate;
         this.log = log;
+        this.level = level;
+    }
+
+    ExceptionLoggingExecutor(final DirectExecutor delegate, final Logger log) {
+        this(delegate, log, Logger.Level.ERROR);
     }
 
     public void execute(final Runnable command) {
         try {
             delegate.execute(command);
         } catch (Throwable t) {
-            log.error("Exception thrown from thread task", t);
+            log.logf(level, t, "Exception thrown from thread task");
         }
     }
 
