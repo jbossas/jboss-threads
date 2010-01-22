@@ -22,6 +22,7 @@
 
 package org.jboss.threads;
 
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.BlockingQueue;
@@ -33,7 +34,7 @@ import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 /**
  *
  */
-public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements BoundedQueueThreadPoolExecutorMBean {
+public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements BlockingExecutor, BoundedQueueThreadPoolExecutorMBean {
 
     private final AtomicInteger rejectCount = new AtomicInteger();
 
@@ -57,8 +58,20 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
         setRejectedExecutionHandler(handler);
     }
 
-    public void execute(final Runnable command) {
-        super.execute(command);
+    public void execute(final Runnable task) {
+        super.execute(task);
+    }
+
+    public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
+        super.execute(task);
+    }
+
+    public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
+        super.execute(task);
+    }
+
+    public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
+        super.execute(task);
     }
 
     public int getLargestThreadCount() {

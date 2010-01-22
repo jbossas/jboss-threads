@@ -324,7 +324,7 @@ public final class JBossExecutors {
      * @param factory the thread factory to use
      * @return the executor
      */
-    public static Executor threadFactoryExecutor(final ThreadFactory factory) {
+    public static BlockingExecutor threadFactoryExecutor(final ThreadFactory factory) {
         return new ThreadFactoryExecutor(factory, Integer.MAX_VALUE, false, directExecutor());
     }
 
@@ -336,7 +336,7 @@ public final class JBossExecutors {
      * @param maxThreads the maximum number of allowed threads
      * @return the executor
      */
-    public static Executor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads) {
+    public static BlockingExecutor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads) {
         return new ThreadFactoryExecutor(factory, maxThreads, false, directExecutor());
     }
 
@@ -350,7 +350,7 @@ public final class JBossExecutors {
      * @param blocking {@code true} if the submitter should block when the maximum number of threads has been reached
      * @return the executor
      */
-    public static Executor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads, final boolean blocking) {
+    public static BlockingExecutor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads, final boolean blocking) {
         return new ThreadFactoryExecutor(factory, maxThreads, blocking, directExecutor());
     }
 
@@ -365,7 +365,7 @@ public final class JBossExecutors {
      * @param taskExecutor the executor which should run each task
      * @return the executor
      */
-    public static Executor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads, final boolean blocking, final DirectExecutor taskExecutor) {
+    public static BlockingExecutor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads, final boolean blocking, final DirectExecutor taskExecutor) {
         return new ThreadFactoryExecutor(factory, maxThreads, blocking, taskExecutor);
     }
 
@@ -432,6 +432,10 @@ public final class JBossExecutors {
     // ==================================================
     // PROTECTED EXECUTOR SERVICE WRAPPERS
     // ==================================================
+
+    public static BlockingExecutor protectedBlockingExecutor(final BlockingExecutor target) {
+        return new DelegatingBlockingExecutor(target);
+    }
 
     /**
      * Wrap an executor with an {@code ExecutorService} instance which supports all the features of {@code ExecutorService}

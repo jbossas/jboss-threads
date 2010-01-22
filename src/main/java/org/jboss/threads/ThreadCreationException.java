@@ -27,7 +27,7 @@ import java.util.concurrent.RejectedExecutionException;
 /**
  * Thrown when a thread factory refuses to create a thread for a thread pool.
  */
-public final class ThreadCreationException extends RejectedExecutionException {
+public class ThreadCreationException extends RejectedExecutionException {
 
     private static final long serialVersionUID = 5666802385744283783L;
 

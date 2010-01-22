@@ -22,14 +22,14 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
 
-class ThreadFactoryExecutor implements Executor, BoundedThreadPoolExecutorMBean {
+class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecutorMBean {
 
     private final ThreadFactory factory;
     private final Semaphore limitSemaphore;
@@ -74,7 +74,10 @@ class ThreadFactoryExecutor implements Executor, BoundedThreadPoolExecutorMBean 
         }
     }
 
-    public void execute(final Runnable command) {
+    public void execute(final Runnable task) {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
         try {
             final Semaphore semaphore = limitSemaphore;
             if (blocking) {
@@ -100,7 +103,134 @@ class ThreadFactoryExecutor implements Executor, BoundedThreadPoolExecutorMBean 
                                     largestThreadCount = t;
                                 }
                             }
-                            taskExecutor.execute(command);
+                            taskExecutor.execute(task);
+                            synchronized (lock) {
+                                currentThreadCount--;
+                            }
+                        } finally {
+                            limitSemaphore.release();
+                        }
+                    }
+                });
+                if (thread == null) {
+                    throw new ThreadCreationException("No threads can be created");
+                }
+                thread.start();
+                ok = true;
+            } finally {
+                if (! ok) semaphore.release();
+            }
+        } catch (RejectedExecutionException e) {
+            rejected.getAndIncrement();
+            throw e;
+        }
+    }
+
+    public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        try {
+            final Semaphore semaphore = limitSemaphore;
+            semaphore.acquire();
+            boolean ok = false;
+            try {
+                final Thread thread = factory.newThread(new Runnable() {
+                    public void run() {
+                        try {
+                            synchronized (lock) {
+                                int t = ++currentThreadCount;
+                                if (t > largestThreadCount) {
+                                    largestThreadCount = t;
+                                }
+                            }
+                            taskExecutor.execute(task);
+                            synchronized (lock) {
+                                currentThreadCount--;
+                            }
+                        } finally {
+                            limitSemaphore.release();
+                        }
+                    }
+                });
+                if (thread == null) {
+                    throw new ThreadCreationException("No threads can be created");
+                }
+                thread.start();
+                ok = true;
+            } finally {
+                if (! ok) semaphore.release();
+            }
+        } catch (RejectedExecutionException e) {
+            rejected.getAndIncrement();
+            throw e;
+        }
+    }
+
+    public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        try {
+            final Semaphore semaphore = limitSemaphore;
+            if (! semaphore.tryAcquire(timeout, unit)) {
+                throw new ExecutionTimedOutException();
+            }
+            boolean ok = false;
+            try {
+                final Thread thread = factory.newThread(new Runnable() {
+                    public void run() {
+                        try {
+                            synchronized (lock) {
+                                int t = ++currentThreadCount;
+                                if (t > largestThreadCount) {
+                                    largestThreadCount = t;
+                                }
+                            }
+                            taskExecutor.execute(task);
+                            synchronized (lock) {
+                                currentThreadCount--;
+                            }
+                        } finally {
+                            limitSemaphore.release();
+                        }
+                    }
+                });
+                if (thread == null) {
+                    throw new ThreadCreationException("No threads can be created");
+                }
+                thread.start();
+                ok = true;
+            } finally {
+                if (! ok) semaphore.release();
+            }
+        } catch (RejectedExecutionException e) {
+            rejected.getAndIncrement();
+            throw e;
+        }
+    }
+
+    public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        try {
+            final Semaphore semaphore = limitSemaphore;
+            if (! semaphore.tryAcquire()) {
+                throw new RejectedExecutionException("Task limit reached");
+            }
+            boolean ok = false;
+            try {
+                final Thread thread = factory.newThread(new Runnable() {
+                    public void run() {
+                        try {
+                            synchronized (lock) {
+                                int t = ++currentThreadCount;
+                                if (t > largestThreadCount) {
+                                    largestThreadCount = t;
+                                }
+                            }
+                            taskExecutor.execute(task);
                             synchronized (lock) {
                                 currentThreadCount--;
                             }

@@ -23,9 +23,10 @@
 package org.jboss.threads;
 
 import java.util.ArrayDeque;
-import java.util.LinkedList;
 import java.util.Queue;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.Condition;
@@ -36,7 +37,7 @@ import java.util.concurrent.locks.Condition;
  * More specifically, if a FIFO queue type is used, any call B to the {@link #execute(Runnable)} method that
  * happens-after another call A to the same method, will result in B's task running after A's.
  */
-public final class OrderedExecutor implements Executor {
+public final class OrderedExecutor implements BlockingExecutor {
 
     private final Executor parent;
     private final Runnable runner = new Runner();
@@ -125,31 +126,19 @@ public final class OrderedExecutor implements Executor {
         this(parent, new ArrayQueue<Runnable>(queueLength), blocking, handoffExecutor);
     }
 
-
-
     /**
      * Run a task.
      *
-     * @param command the task to run.
+     * @param task the task to run.
      */
-    public void execute(Runnable command) {
+    public void execute(Runnable task) {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
         Executor executor;
         OUT: for (;;) {
             lock.lock();
             try {
-                while (! queue.offer(command)) {
-                    if (blocking) {
-                        try {
-                            removeCondition.await();
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            throw new ExecutionInterruptedException();
-                        }
-                    } else {
-                        executor = handoffExecutor;
-                        break OUT;
-                    }
-                }
                 if (! running) {
                     running = true;
                     boolean ok = false;
@@ -162,13 +151,133 @@ public final class OrderedExecutor implements Executor {
                         }
                     }
                 }
+                if (! queue.offer(task)) {
+                    if (blocking) {
+                        try {
+                            removeCondition.await();
+                            continue;
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new ExecutionInterruptedException();
+                        }
+                    } else {
+                        executor = handoffExecutor;
+                        break;
+                    }
+                }
                 return;
             } finally {
                 lock.unlock();
             }
         }
         if (executor != null) {
-            executor.execute(command);
+            executor.execute(task);
+        }
+    }
+
+    public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        OUT: for (;;) {
+            lock.lock();
+            try {
+                if (! running) {
+                    running = true;
+                    boolean ok = false;
+                    try {
+                        parent.execute(runner);
+                        ok = true;
+                    } finally {
+                        if (! ok) {
+                            running = false;
+                        }
+                    }
+                }
+                if (! queue.offer(task)) {
+                    removeCondition.await();
+                    continue;
+                }
+                return;
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
+    public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        long now = System.currentTimeMillis();
+        final long deadline = now + unit.toMillis(timeout);
+        if (deadline < 0L) {
+            executeBlocking(task);
+            return;
+        }
+        OUT: for (;;) {
+            lock.lock();
+            try {
+                if (! running) {
+                    running = true;
+                    boolean ok = false;
+                    try {
+                        parent.execute(runner);
+                        ok = true;
+                    } finally {
+                        if (! ok) {
+                            running = false;
+                        }
+                    }
+                }
+                if (! queue.offer(task)) {
+                    final long remaining = deadline - now;
+                    if (remaining <= 0L) {
+                        throw new ExecutionTimedOutException();
+                    }
+                    removeCondition.await(remaining, TimeUnit.MILLISECONDS);
+                    now = System.currentTimeMillis();
+                    continue;
+                }
+                return;
+            } finally {
+                lock.unlock();
+            }
+        }
+
+    }
+
+    public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        Executor executor;
+        OUT: for (;;) {
+            lock.lock();
+            try {
+                if (! running) {
+                    running = true;
+                    boolean ok = false;
+                    try {
+                        parent.execute(runner);
+                        ok = true;
+                    } finally {
+                        if (! ok) {
+                            running = false;
+                        }
+                    }
+                }
+                if (! queue.offer(task)) {
+                    executor = handoffExecutor;
+                    break;
+                }
+                return;
+            } finally {
+                lock.unlock();
+            }
+        }
+        if (executor != null) {
+            executor.execute(task);
         }
     }
 

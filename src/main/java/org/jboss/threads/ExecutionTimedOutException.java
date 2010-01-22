@@ -19,52 +19,53 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
+
 package org.jboss.threads;
 
 import java.util.concurrent.RejectedExecutionException;
 
 /**
- * Thrown when a task is submitted to an executor which is in the process of, or has completed shutting down.
+ * Thrown when an execute-with-timeout method is called and the timeout elapsed before a task could be <b>accepted</b>.
  */
-public class StoppedExecutorException extends RejectedExecutionException {
+public class ExecutionTimedOutException extends RejectedExecutionException {
 
-    private static final long serialVersionUID = 4815103522815471074L;
+    private static final long serialVersionUID = 6577491781534695133L;
 
     /**
-     * Constructs a {@code StoppedExecutorException} with no detail message. The cause is not initialized, and may
+     * Constructs a {@code ExecutionTimedOutException} with no detail message. The cause is not initialized, and may
      * subsequently be initialized by a call to {@link #initCause(Throwable) initCause}.
      */
-    public StoppedExecutorException() {
+    public ExecutionTimedOutException() {
     }
 
     /**
-     * Constructs a {@code StoppedExecutorException} with the specified detail message. The cause is not initialized, and
+     * Constructs a {@code ExecutionTimedOutException} with the specified detail message. The cause is not initialized, and
      * may subsequently be initialized by a call to {@link #initCause(Throwable) initCause}.
      *
      * @param msg the detail message
      */
-    public StoppedExecutorException(final String msg) {
+    public ExecutionTimedOutException(final String msg) {
         super(msg);
     }
 
     /**
-     * Constructs a {@code StoppedExecutorException} with the specified cause. The detail message is set to:
+     * Constructs a {@code ExecutionTimedOutException} with the specified cause. The detail message is set to:
      * <pre>(cause == null ? null : cause.toString())</pre>
      * (which typically contains the class and detail message of {@code cause}).
      *
      * @param cause the cause (which is saved for later retrieval by the {@link #getCause()} method)
      */
-    public StoppedExecutorException(final Throwable cause) {
+    public ExecutionTimedOutException(final Throwable cause) {
         super(cause);
     }
 
     /**
-     * Constructs a {@code StoppedExecutorException} with the specified detail message and cause.
+     * Constructs a {@code ExecutionTimedOutException} with the specified detail message and cause.
      *
      * @param msg the detail message
      * @param cause the cause (which is saved for later retrieval by the {@link #getCause()} method)
      */
-    public StoppedExecutorException(final String msg, final Throwable cause) {
+    public ExecutionTimedOutException(final String msg, final Throwable cause) {
         super(msg, cause);
     }
 }

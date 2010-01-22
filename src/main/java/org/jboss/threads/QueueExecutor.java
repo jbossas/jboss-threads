@@ -42,7 +42,7 @@ import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 /**
  * An executor which uses a regular queue to hold tasks.  The executor may be tuned at runtime in many ways.
  */
-public final class QueueExecutor extends AbstractExecutorService implements ExecutorService, BoundedQueueThreadPoolExecutorMBean {
+public final class QueueExecutor extends AbstractExecutorService implements ExecutorService, BlockingExecutor, BoundedQueueThreadPoolExecutorMBean {
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
 
     private final Lock lock = new ReentrantLock();
@@ -155,6 +155,9 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
      * @throws ExecutionInterruptedException when blocking is enabled and the current thread is interrupted before a task could be accepted
      */
     public void execute(final Runnable task) throws RejectedExecutionException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
         final Executor executor;
         final Lock lock = this.lock;
         lock.lock();
@@ -196,6 +199,168 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
                     break;
                 }
             }
+        } finally {
+            lock.unlock();
+        }
+        if (executor != null) {
+            executor.execute(task);
+        }
+        return;
+    }
+
+    /**
+     * Execute a task, blocking until it can be accepted, or until the calling thread is interrupted.
+     *
+     * @param task the task to submit
+     *
+     * @throws org.jboss.threads.StoppedExecutorException if the executor was shut down before the task was accepted
+     * @throws org.jboss.threads.ThreadCreationException if a thread could not be created for some reason
+     * @throws java.util.concurrent.RejectedExecutionException if execution is rejected for some other reason
+     * @throws InterruptedException if the current thread was interrupted before the task could be accepted
+     * @throws NullPointerException if command is {@code null}
+     */
+    public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            for (;;) {
+                if (stop) {
+                    throw new StoppedExecutorException("Executor is stopped");
+                }
+                // Try core thread first, then queue, then extra thread
+                final int count = threadCount;
+                if (count < coreThreads) {
+                    startNewThread(task);
+                    threadCount = count + 1;
+                    return;
+                }
+                // next queue...
+                final Queue<Runnable> queue = this.queue;
+                if (queue.offer(task)) {
+                    enqueueCondition.signal();
+                    return;
+                }
+                // extra threads?
+                if (count < maxThreads) {
+                    startNewThread(task);
+                    threadCount = count + 1;
+                    return;
+                }
+                removeCondition.await();
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Execute a task, blocking until it can be accepted, a timeout elapses, or the calling thread is interrupted.
+     *
+     * @param task the task to submit
+     * @param timeout the amount of time to wait
+     * @param unit the unit of time
+     *
+     * @throws org.jboss.threads.ExecutionTimedOutException if the timeout elapsed before a task could be accepted
+     * @throws org.jboss.threads.StoppedExecutorException if the executor was shut down before the task was accepted
+     * @throws org.jboss.threads.ThreadCreationException if a thread could not be created for some reason
+     * @throws java.util.concurrent.RejectedExecutionException if execution is rejected for some other reason
+     * @throws InterruptedException if the current thread was interrupted before the task could be accepted
+     * @throws NullPointerException if command is {@code null}
+     */
+    public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        long now = System.currentTimeMillis();
+        final long deadline = now + unit.toMillis(timeout);
+        if (deadline < 0L) {
+            executeBlocking(task);
+            return;
+        }
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            for (;;) {
+                if (stop) {
+                    throw new StoppedExecutorException("Executor is stopped");
+                }
+                // Try core thread first, then queue, then extra thread
+                final int count = threadCount;
+                if (count < coreThreads) {
+                    startNewThread(task);
+                    threadCount = count + 1;
+                    return;
+                }
+                // next queue...
+                final Queue<Runnable> queue = this.queue;
+                if (queue.offer(task)) {
+                    enqueueCondition.signal();
+                    return;
+                }
+                // extra threads?
+                if (count < maxThreads) {
+                    startNewThread(task);
+                    threadCount = count + 1;
+                    return;
+                }
+                final long remaining = deadline - now;
+                if (remaining <= 0L) {
+                    throw new ExecutionTimedOutException();
+                }
+                removeCondition.await(remaining, TimeUnit.MILLISECONDS);
+                now = System.currentTimeMillis();
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Execute a task, without blocking.
+     *
+     * @param task the task to submit
+     *
+     * @throws org.jboss.threads.StoppedExecutorException if the executor was shut down before the task was accepted
+     * @throws org.jboss.threads.ThreadCreationException if a thread could not be created for some reason
+     * @throws java.util.concurrent.RejectedExecutionException if execution is rejected for some other reason
+     * @throws NullPointerException if command is {@code null}
+     */
+    public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        final Executor executor;
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            if (stop) {
+                throw new StoppedExecutorException("Executor is stopped");
+            }
+            // Try core thread first, then queue, then extra thread
+            final int count = threadCount;
+            if (count < coreThreads) {
+                startNewThread(task);
+                threadCount = count + 1;
+                return;
+            }
+            // next queue...
+            final Queue<Runnable> queue = this.queue;
+            if (queue.offer(task)) {
+                enqueueCondition.signal();
+                return;
+            }
+            // extra threads?
+            if (count < maxThreads) {
+                startNewThread(task);
+                threadCount = count + 1;
+                return;
+            }
+            // delegate the task outside of the lock.
+            rejectCount++;
+            executor = handoffExecutor;
         } finally {
             lock.unlock();
         }
@@ -495,6 +660,9 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
     // call with lock held!
     private void startNewThread(final Runnable task) {
         final Thread thread = threadFactory.newThread(new Worker(task));
+        if (thread == null) {
+            throw new ThreadCreationException();
+        }
         workers.add(thread);
         final int size = workers.size();
         if (size > largestPoolSize) {

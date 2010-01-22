@@ -43,7 +43,7 @@ import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
  * A queueless thread pool.  If one or more threads are waiting for work when a task is submitted, it will be used.
  * Otherwise, if fewer than the maximum threads are started, a new thread is created.
  */
-public final class QueuelessExecutor extends AbstractExecutorService implements ExecutorService, BoundedThreadPoolExecutorMBean  {
+public final class QueuelessExecutor extends AbstractExecutorService implements ExecutorService, BlockingExecutor, BoundedThreadPoolExecutorMBean  {
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
 
     private final ThreadFactory threadFactory;
@@ -279,7 +279,10 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         }
     }
 
-    public void execute(final Runnable command) {
+    public void execute(final Runnable task) {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
         final Executor executor;
         final Set<Thread> runningThreads = this.runningThreads;
         final Condition runnableDequeued = this.runnableDequeued;
@@ -294,7 +297,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                 final Worker waitingWorker;
                 if ((waitingWorker = this.waitingWorker) != null) {
                     // a worker thread was waiting for a task; give it the task and wake it up
-                    waitingWorker.setRunnable(command);
+                    waitingWorker.setRunnable(task);
                     taskEnqueued.signal();
                     this.waitingWorker = null;
                     return;
@@ -303,7 +306,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                 final int currentSize = runningThreads.size();
                 if (currentSize < maxThreads) {
                     // if we haven't reached the thread limit yet, start up another thread
-                    final Thread thread = threadFactory.newThread(new Worker(command));
+                    final Thread thread = threadFactory.newThread(new Worker(task));
                     if (thread == null) {
                         throw new ThreadCreationException();
                     }
@@ -334,7 +337,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                         throw new ExecutionInterruptedException();
                     }
                 }
-                this.workRunnable = command;
+                this.workRunnable = task;
                 try {
                     runnableDequeued.await();
                     if (this.workRunnable == null) {
@@ -353,10 +356,148 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
             lock.unlock();
         }
         if (executor != null) {
-            executor.execute(command);
+            executor.execute(task);
         } else {
             throw new RejectedExecutionException();
         }
+    }
+
+    public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        final Set<Thread> runningThreads = this.runningThreads;
+        final Condition runnableDequeued = this.runnableDequeued;
+        final Lock lock = this.lock;
+        Runnable workRunnable;
+        lock.lock();
+        try {
+            for (;;) {
+                if (stop) {
+                    throw new StoppedExecutorException("Executor has been shut down");
+                }
+                final Worker waitingWorker;
+                if ((waitingWorker = this.waitingWorker) != null) {
+                    // a worker thread was waiting for a task; give it the task and wake it up
+                    waitingWorker.setRunnable(task);
+                    taskEnqueued.signal();
+                    this.waitingWorker = null;
+                    return;
+                }
+                // no worker thread was waiting
+                final int currentSize = runningThreads.size();
+                if (currentSize < maxThreads) {
+                    // if we haven't reached the thread limit yet, start up another thread
+                    final Thread thread = threadFactory.newThread(new Worker(task));
+                    if (thread == null) {
+                        throw new ThreadCreationException();
+                    }
+                    if (! runningThreads.add(thread)) {
+                        throw new ThreadCreationException("Unable to add new thread to the running set");
+                    }
+                    if (currentSize >= largestPoolSize) {
+                        largestPoolSize = currentSize + 1;
+                    }
+                    thread.start();
+                    return;
+                }
+                workRunnable = this.workRunnable;
+                if (workRunnable != null) {
+                    // someone else is waiting for a worker, so we wait for them
+                    nextReady.await();
+                    continue;
+                }
+                this.workRunnable = task;
+                try {
+                    runnableDequeued.await();
+                    if (this.workRunnable == null) {
+                        // task was accepted
+                        nextReady.signal();
+                        return;
+                    }
+                } finally {
+                    this.workRunnable = null;
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        long now = System.currentTimeMillis();
+        final long deadline = now + unit.toMillis(timeout);
+        if (deadline < 0L) {
+            executeBlocking(task);
+            return;
+        }
+        final Set<Thread> runningThreads = this.runningThreads;
+        final Condition runnableDequeued = this.runnableDequeued;
+        final Lock lock = this.lock;
+        Runnable workRunnable;
+        lock.lock();
+        try {
+            for (;;) {
+                if (stop) {
+                    throw new StoppedExecutorException("Executor has been shut down");
+                }
+                final Worker waitingWorker;
+                if ((waitingWorker = this.waitingWorker) != null) {
+                    // a worker thread was waiting for a task; give it the task and wake it up
+                    waitingWorker.setRunnable(task);
+                    taskEnqueued.signal();
+                    this.waitingWorker = null;
+                    return;
+                }
+                // no worker thread was waiting
+                final int currentSize = runningThreads.size();
+                if (currentSize < maxThreads) {
+                    // if we haven't reached the thread limit yet, start up another thread
+                    final Thread thread = threadFactory.newThread(new Worker(task));
+                    if (thread == null) {
+                        throw new ThreadCreationException();
+                    }
+                    if (! runningThreads.add(thread)) {
+                        throw new ThreadCreationException("Unable to add new thread to the running set");
+                    }
+                    if (currentSize >= largestPoolSize) {
+                        largestPoolSize = currentSize + 1;
+                    }
+                    thread.start();
+                    return;
+                }
+                workRunnable = this.workRunnable;
+                if (workRunnable != null) {
+                    // someone else is waiting for a worker, so we wait for them
+                    nextReady.await();
+                    continue;
+                }
+                this.workRunnable = task;
+                try {
+                    final long remaining = deadline - now;
+                    if (remaining <= 0L) {
+                        throw new ExecutionTimedOutException();
+                    }
+                    runnableDequeued.await(remaining, TimeUnit.MILLISECONDS);
+                    now = System.currentTimeMillis();
+                    if (this.workRunnable == null) {
+                        // task was accepted
+                        nextReady.signal();
+                        return;
+                    }
+                } finally {
+                    this.workRunnable = null;
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
     }
 
     private static long clipHigh(long value) {
