@@ -52,6 +52,10 @@ public final class JBossExecutors {
     private static final DirectExecutorService REJECTING_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(RejectingExecutor.INSTANCE);
     private static final DirectExecutorService DISCARDING_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(DiscardingExecutor.INSTANCE);
 
+    private static final BlockingExecutor BLOCKING_DIRECT_EXECUTOR = new DelegatingDirectBlockingExecutor(SimpleDirectExecutor.INSTANCE);
+    private static final BlockingExecutor BLOCKING_REJECTING_EXECUTOR = new DelegatingDirectBlockingExecutor(RejectingExecutor.INSTANCE);
+    private static final BlockingExecutor BLOCKING_DISCARDING_EXECUTOR = new DelegatingDirectBlockingExecutor(DiscardingExecutor.INSTANCE);
+
     // ==================================================
     // DIRECT EXECUTORS
     // ==================================================
@@ -282,6 +286,37 @@ public final class JBossExecutors {
     }
 
     // ==================================================
+    // DIRECT BLOCKING EXECUTORS
+    // ==================================================
+
+    /**
+     * Get an executor which executes tasks in the current thread, which implements {@code BlockingExecutor}.
+     *
+     * @return the blocking direct executor
+     */
+    public static BlockingExecutor blockingDirectExecutor() {
+        return BLOCKING_DIRECT_EXECUTOR;
+    }
+
+    /**
+     * Get an executor which discards all tasks, which implements {@code BlockingExecutor}.
+     *
+     * @return the executor
+     */
+    public static BlockingExecutor blockingDiscardingExecutor() {
+        return BLOCKING_DISCARDING_EXECUTOR;
+    }
+
+    /**
+     * Get an executor which rejects all tasks, which implements {@code BlockingExecutor}.
+     *
+     * @return the executor
+     */
+    public static BlockingExecutor blockingRejectingExecutor() {
+        return BLOCKING_REJECTING_EXECUTOR;
+    }
+
+    // ==================================================
     // EXECUTORS
     // ==================================================
 
@@ -294,6 +329,18 @@ public final class JBossExecutors {
      */
     public static Executor wrappingExecutor(final DirectExecutor taskWrapper, final Executor delegate) {
         return executor(wrappingExecutor(delegate), taskWrapper);
+    }
+
+    /**
+     * An executor which delegates to the given direct executor, but implements the blocking executor interface.
+     * Since direct executors always execute tasks in the current thread, no blocking is possible; therefore the
+     * methods of BlockingExecutors always succeed or fail instantly.
+     *
+     * @param delegate the delegate direct executor
+     * @return the blocking executor
+     */
+    public static BlockingExecutor directBlockingExecutor(final DirectExecutor delegate) {
+        return new DelegatingDirectBlockingExecutor(delegate);
     }
 
     /**
