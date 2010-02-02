@@ -36,7 +36,7 @@ public interface BlockingExecutor extends Executor {
      * or in the calling thread, at the discretion of the <tt>Executor</tt> implementation.  The call may block
      * or not block, depending on the configuration of the executor.
      *
-     * @param command the task to submit
+     * @param task the task to submit
      *
      * @throws ExecutionInterruptedException if the executor is configured to block, and the thread was interrupted while waiting
      *              for the task to be accepted
@@ -45,7 +45,7 @@ public interface BlockingExecutor extends Executor {
      * @throws RejectedExecutionException if execution is rejected for some other reason
      * @throws NullPointerException if command is {@code null}
      */
-    void execute(Runnable command);
+    void execute(Runnable task);
 
     /**
      * Execute a task, blocking until it can be accepted, or until the calling thread is interrupted.
