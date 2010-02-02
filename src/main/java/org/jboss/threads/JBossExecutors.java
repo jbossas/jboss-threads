@@ -559,8 +559,8 @@ public final class JBossExecutors {
     // RUNNABLES
     // ==================================================
 
-    private static final Runnable NULL_RUNNABLE = new NullRunnable();
-    private static final Runnable THREAD_LOCAL_RESETTER = new ThreadLocalResetter();
+    private static final Runnable NULL_RUNNABLE = NullRunnable.getInstance();
+    private static final Runnable THREAD_LOCAL_RESETTER = ThreadLocalResetter.getInstance();
 
     /**
      * Get the null runnable which does nothing.

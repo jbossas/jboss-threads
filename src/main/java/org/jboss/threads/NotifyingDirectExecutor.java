@@ -22,7 +22,7 @@
 
 package org.jboss.threads;
 
-final class NotifyingDirectExecutor<A> extends DelegatingDirectExecutor implements DirectExecutor {
+class NotifyingDirectExecutor<A> extends DelegatingDirectExecutor implements DirectExecutor {
 
     private final TaskNotifier<Runnable, ? super A> notifier;
     private final A attachment;

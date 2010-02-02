@@ -27,6 +27,8 @@ import java.security.AccessController;
 import java.security.PrivilegedAction;
 
 final class ThreadLocalResetter implements Runnable {
+    private static final ThreadLocalResetter INSTANCE = new ThreadLocalResetter();
+
     private static final Field THREAD_LOCAL_MAP_FIELD;
     private static final Field INHERITABLE_THREAD_LOCAL_MAP_FIELD;
 
@@ -57,7 +59,11 @@ final class ThreadLocalResetter implements Runnable {
         });
     }
 
-    ThreadLocalResetter() {
+    static ThreadLocalResetter getInstance() {
+        return INSTANCE;
+    }
+
+    private ThreadLocalResetter() {
     }
 
     public void run() {
