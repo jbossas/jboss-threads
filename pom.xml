@@ -31,12 +31,12 @@
     <groupId>org.jboss.threads</groupId>
     <artifactId>jboss-threads</artifactId>
     <packaging>jar</packaging>
-    <version>2.0.0.CR4-SNAPSHOT</version>
+    <version>2.0.0.CR4</version>
     <dependencies>
         <dependency>
             <groupId>org.jboss.logging</groupId>
-            <artifactId>jboss-logging-spi</artifactId>
-            <version>2.2.0.CR1</version>
+            <artifactId>jboss-logging</artifactId>
+            <version>3.0.0.Beta2</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
