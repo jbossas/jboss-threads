@@ -34,8 +34,9 @@ import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 /**
  *
  */
-public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements BlockingExecutor, BoundedQueueThreadPoolExecutorMBean {
+public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements BlockingExecutor, BoundedQueueThreadPoolExecutorMBean, ShutdownListenable {
 
+    private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
     private final AtomicInteger rejectCount = new AtomicInteger();
 
     public JBossThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue) {
@@ -132,6 +133,15 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
 
     public void setRejectedExecutionHandler(final RejectedExecutionHandler handler) {
         super.setRejectedExecutionHandler(new CountingRejectHandler(handler));
+    }
+
+    /** {@inheritDoc} */
+    public <A> void addShutdownListener(final EventListener<A> shutdownListener, final A attachment) {
+        shutdownListenable.addShutdownListener(shutdownListener, attachment);
+    }
+
+    protected void terminated() {
+        shutdownListenable.shutdown();
     }
 
     private final class CountingRejectHandler implements RejectedExecutionHandler {

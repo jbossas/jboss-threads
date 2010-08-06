@@ -30,8 +30,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jboss.threads.management.ThreadPoolExecutorMBean;
 
-public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolExecutor implements ThreadPoolExecutorMBean {
+public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolExecutor implements ThreadPoolExecutorMBean, ShutdownListenable {
 
+    private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
     private final AtomicInteger rejectCount = new AtomicInteger();
 
     public JBossScheduledThreadPoolExecutor(int corePoolSize) {
@@ -94,6 +95,15 @@ public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolE
 
     public void setRejectedExecutionHandler(final RejectedExecutionHandler handler) {
         super.setRejectedExecutionHandler(new CountingRejectHandler(handler));
+    }
+
+    /** {@inheritDoc} */
+    public <A> void addShutdownListener(final EventListener<A> shutdownListener, final A attachment) {
+        shutdownListenable.addShutdownListener(shutdownListener, attachment);
+    }
+
+    protected void terminated() {
+        shutdownListenable.shutdown();
     }
 
     private final class CountingRejectHandler implements RejectedExecutionHandler {

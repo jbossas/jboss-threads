@@ -43,9 +43,11 @@ import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
  * A queueless thread pool.  If one or more threads are waiting for work when a task is submitted, it will be used.
  * Otherwise, if fewer than the maximum threads are started, a new thread is created.
  */
-public final class QueuelessExecutor extends AbstractExecutorService implements ExecutorService, BlockingExecutor, BoundedThreadPoolExecutorMBean  {
+public final class QueuelessExecutor extends AbstractExecutorService implements ExecutorService, BlockingExecutor, BoundedThreadPoolExecutorMBean, ShutdownListenable {
+
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
 
+    private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
     private final ThreadFactory threadFactory;
     private final DirectExecutor taskExecutor;
 
@@ -498,6 +500,12 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     }
 
     public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
+        throw new RejectedExecutionException("Not implemented");
+    }
+
+    /** {@inheritDoc} */
+    public <A> void addShutdownListener(final EventListener<A> shutdownListener, final A attachment) {
+        shutdownListenable.addShutdownListener(shutdownListener, attachment);
     }
 
     private static long clipHigh(long value) {
@@ -590,13 +598,18 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     }
                 }
             } finally {
+                boolean last = false;
                 lock.lock();
                 try {
                     if (stop && runningThreads.remove(thread) && runningThreads.isEmpty()) {
                         threadDeath.signalAll();
+                        last = true;
                     }
                 } finally {
                     lock.unlock();
+                }
+                if (last) {
+                    shutdownListenable.shutdown();
                 }
             }
         }

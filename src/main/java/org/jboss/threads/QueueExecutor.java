@@ -42,8 +42,9 @@ import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 /**
  * An executor which uses a regular queue to hold tasks.  The executor may be tuned at runtime in many ways.
  */
-public final class QueueExecutor extends AbstractExecutorService implements ExecutorService, BlockingExecutor, BoundedQueueThreadPoolExecutorMBean {
+public final class QueueExecutor extends AbstractExecutorService implements ExecutorService, BlockingExecutor, BoundedQueueThreadPoolExecutorMBean, ShutdownListenable {
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
+    private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
 
     private final Lock lock = new ReentrantLock();
     // signal when a task is written to the queue
@@ -657,6 +658,11 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
         }
     }
 
+    /** {@inheritDoc} */
+    public <A> void addShutdownListener(final EventListener<A> shutdownListener, final A attachment) {
+        shutdownListenable.addShutdownListener(shutdownListener, attachment);
+    }
+
     // call with lock held!
     private void startNewThread(final Runnable task) {
         final Thread thread = threadFactory.newThread(new Worker(task));
@@ -822,11 +828,16 @@ public final class QueueExecutor extends AbstractExecutorService implements Exec
                     Thread.interrupted();
                 }
             } finally {
+                boolean last = false;
                 lock.lock();
                 try {
                     workers.remove(Thread.currentThread());
+                    last = stop && workers.isEmpty();
                 } finally {
                     lock.unlock();
+                }
+                if (last) {
+                    shutdownListenable.shutdown();
                 }
             }
         }
