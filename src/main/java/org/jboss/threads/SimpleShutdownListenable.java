@@ -50,13 +50,14 @@ public final class SimpleShutdownListenable implements ShutdownListenable {
      * future listeners are invoked immediately.
      */
     public void shutdown() {
+        final List<Registration<?>> list;
         synchronized (this) {
-            final List<Registration<?>> list = this.list;
+            list = this.list;
             this.list = null;
-            if (list != null) {
-                for (Registration<?> registration : list) {
-                    registration.run();
-                }
+        }
+        if (list != null) {
+            for (Registration<?> registration : list) {
+                registration.run();
             }
         }
     }
