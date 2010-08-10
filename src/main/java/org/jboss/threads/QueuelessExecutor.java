@@ -500,7 +500,57 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     }
 
     public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
-        throw new RejectedExecutionException("Not implemented");
+        if (task == null) {
+            throw new NullPointerException("task is null");
+        }
+        final Executor executor;
+        final Set<Thread> runningThreads = this.runningThreads;
+        final Lock lock = this.lock;
+        lock.lock();
+        try {
+            for (;;) {
+                if (stop) {
+                    throw new StoppedExecutorException("Executor has been shut down");
+                }
+                final Worker waitingWorker;
+                if ((waitingWorker = this.waitingWorker) != null) {
+                    // a worker thread was waiting for a task; give it the task and wake it up
+                    waitingWorker.setRunnable(task);
+                    taskEnqueued.signal();
+                    this.waitingWorker = null;
+                    return;
+                }
+                // no worker thread was waiting
+                final int currentSize = runningThreads.size();
+                if (currentSize < maxThreads) {
+                    // if we haven't reached the thread limit yet, start up another thread
+                    final Thread thread = threadFactory.newThread(new Worker(task));
+                    if (thread == null) {
+                        throw new ThreadCreationException();
+                    }
+                    if (! runningThreads.add(thread)) {
+                        throw new ThreadCreationException("Unable to add new thread to the running set");
+                    }
+                    if (currentSize >= largestPoolSize) {
+                        largestPoolSize = currentSize + 1;
+                    }
+                    thread.start();
+                    return;
+                }
+                // not blocking, not accepted
+                executor = handoffExecutor;
+                rejectedCount++;
+                // fall out to execute outside of lock
+                break;
+            }
+        } finally {
+            lock.unlock();
+        }
+        if (executor != null) {
+            executor.execute(task);
+        } else {
+            throw new RejectedExecutionException();
+        }
     }
 
     /** {@inheritDoc} */
