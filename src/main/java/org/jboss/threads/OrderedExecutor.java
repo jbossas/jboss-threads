@@ -23,7 +23,9 @@
 package org.jboss.threads;
 
 import java.util.ArrayDeque;
+import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -37,7 +39,7 @@ import java.util.concurrent.locks.Condition;
  * More specifically, if a FIFO queue type is used, any call B to the {@link #execute(Runnable)} method that
  * happens-after another call A to the same method, will result in B's task running after A's.
  */
-public final class OrderedExecutor implements BlockingExecutor {
+public final class OrderedExecutor extends AbstractExecutorService implements BlockingExecutorService {
 
     private final Executor parent;
     private final Runnable runner = new Runner();
@@ -279,6 +281,28 @@ public final class OrderedExecutor implements BlockingExecutor {
         if (executor != null) {
             executor.execute(task);
         }
+    }
+
+    public boolean isShutdown() {
+        // container managed executors are never shut down from the application's perspective
+        return false;
+    }
+
+    public boolean isTerminated() {
+        // container managed executors are never shut down from the application's perspective
+        return false;
+    }
+
+    public boolean awaitTermination(final long timeout, final TimeUnit unit) throws InterruptedException {
+        return false;
+    }
+
+    public void shutdown() {
+        throw new SecurityException("shutdown() not allowed on container-managed executor");
+    }
+
+    public List<Runnable> shutdownNow() {
+        throw new SecurityException("shutdownNow() not allowed on container-managed executor");
     }
 
     private class Runner implements Runnable {

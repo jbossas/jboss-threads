@@ -30,7 +30,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.AbstractExecutorService;
-import java.util.concurrent.ExecutorService;
 import java.util.Queue;
 import java.util.List;
 import java.util.ArrayList;
@@ -42,7 +41,7 @@ import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 /**
  * An executor which uses a regular queue to hold tasks.  The executor may be tuned at runtime in many ways.
  */
-public final class QueueExecutor extends AbstractExecutorService implements ExecutorService, BlockingExecutor, BoundedQueueThreadPoolExecutorMBean, ShutdownListenable {
+public final class QueueExecutor extends AbstractExecutorService implements BlockingExecutorService, BoundedQueueThreadPoolExecutorMBean, ShutdownListenable {
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
     private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
 

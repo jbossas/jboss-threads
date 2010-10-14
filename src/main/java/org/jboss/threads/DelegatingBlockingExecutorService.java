@@ -1,8 +1,8 @@
 /*
- * JBoss, Home of Professional Open Source
- * Copyright 2008, JBoss Inc., and individual contributors as indicated
- * by the @authors tag. See the copyright.txt in the distribution for a
- * full listing of individual contributors.
+ * JBoss, Home of Professional Open Source.
+ * Copyright 2010, Red Hat, Inc., and individual contributors
+ * as indicated by the @author tags. See the copyright.txt file in the
+ * distribution for a full listing of individual contributors.
  *
  * This is free software; you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as
@@ -22,19 +22,19 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.AbstractExecutorService;
-import java.util.concurrent.Executor;
 import java.util.List;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 /**
- * An implementation of {@code ExecutorService} that delegates to the real executor, while disallowing termination.
+ * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
-class DelegatingExecutorService extends AbstractExecutorService implements ExecutorService {
-    private final Executor delegate;
+class DelegatingBlockingExecutorService extends AbstractExecutorService implements BlockingExecutorService {
+    private final BlockingExecutor delegate;
 
-    DelegatingExecutorService(final Executor delegate) {
+    DelegatingBlockingExecutorService(final BlockingExecutor delegate) {
         this.delegate = delegate;
     }
 
@@ -62,6 +62,18 @@ class DelegatingExecutorService extends AbstractExecutorService implements Execu
 
     public List<Runnable> shutdownNow() {
         throw new SecurityException("shutdownNow() not allowed on container-managed executor");
+    }
+
+    public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
+        delegate.executeBlocking(task);
+    }
+
+    public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
+        delegate.executeBlocking(task, timeout, unit);
+    }
+
+    public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
+        delegate.executeNonBlocking(task);
     }
 
     public static ExecutorService directExecutorService() {

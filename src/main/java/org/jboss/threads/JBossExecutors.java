@@ -517,6 +517,17 @@ public final class JBossExecutors {
         return new DelegatingScheduledExecutorService(target);
     }
 
+    /**
+     * Wrap a blocking executor with an {@code BlockingExecutorService} instance which supports all the features of
+     * {@code BlockingExecutorService} except for shutting down the executor.
+     *
+     * @param target the target executor
+     * @return the executor service
+     */
+    public static BlockingExecutorService protectedBlockingExecutorService(final BlockingExecutor target) {
+        return new DelegatingBlockingExecutorService(target);
+    }
+
     // ==================================================
     // THREAD FACTORIES
     // ==================================================

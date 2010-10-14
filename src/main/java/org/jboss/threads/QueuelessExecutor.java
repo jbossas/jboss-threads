@@ -26,7 +26,6 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.AbstractExecutorService;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.Executor;
@@ -43,7 +42,7 @@ import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
  * A queueless thread pool.  If one or more threads are waiting for work when a task is submitted, it will be used.
  * Otherwise, if fewer than the maximum threads are started, a new thread is created.
  */
-public final class QueuelessExecutor extends AbstractExecutorService implements ExecutorService, BlockingExecutor, BoundedThreadPoolExecutorMBean, ShutdownListenable {
+public final class QueuelessExecutor extends AbstractExecutorService implements BlockingExecutorService, BoundedThreadPoolExecutorMBean, ShutdownListenable {
 
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
 

@@ -34,7 +34,7 @@ import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 /**
  *
  */
-public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements BlockingExecutor, BoundedQueueThreadPoolExecutorMBean, ShutdownListenable {
+public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements BlockingExecutorService, BoundedQueueThreadPoolExecutorMBean, ShutdownListenable {
 
     private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
     private final AtomicInteger rejectCount = new AtomicInteger();
