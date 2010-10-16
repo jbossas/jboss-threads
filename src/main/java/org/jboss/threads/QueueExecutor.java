@@ -22,19 +22,20 @@
 
 package org.jboss.threads;
 
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.ThreadFactory;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.AbstractExecutorService;
-import java.util.Queue;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Set;
-import java.util.HashSet;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 import org.jboss.logging.Logger;
 import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 
@@ -372,6 +373,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
 
     /** {@inheritDoc} */
     public void shutdown() {
+        boolean callShutdownListener = false;
         final Lock lock = this.lock;
         lock.lock();
         try {
@@ -380,25 +382,36 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
                 // wake up the whole town
                 removeCondition.signalAll();
                 enqueueCondition.signalAll();
-                for (Thread worker : workers) {
-                    worker.interrupt();
+                if (workers.isEmpty()) {
+                    callShutdownListener = true;
+                } else {
+                    for (Thread worker : workers) {
+                        worker.interrupt();
+                    }
                 }
             }
         } finally {
             lock.unlock();
+            if (callShutdownListener)
+                shutdownListenable.shutdown();
         }
     }
 
     /** {@inheritDoc} */
     public List<Runnable> shutdownNow() {
+        boolean callShutdownListener = false;
         final Lock lock = this.lock;
         lock.lock();
         try {
             stop = true;
             removeCondition.signalAll();
             enqueueCondition.signalAll();
-            for (Thread worker : workers) {
-                worker.interrupt();
+            if (workers.isEmpty()) {
+                callShutdownListener = true;
+            } else {
+                for (Thread worker : workers) {
+                    worker.interrupt();
+                }
             }
             final Queue<Runnable> queue = this.queue;
             final ArrayList<Runnable> list = new ArrayList<Runnable>(queue);
@@ -406,6 +419,8 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
             return list;
         } finally {
             lock.unlock();
+            if (callShutdownListener)
+                shutdownListenable.shutdown();
         }
     }
 

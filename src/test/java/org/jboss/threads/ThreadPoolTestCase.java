@@ -22,12 +22,13 @@
 
 package org.jboss.threads;
 
-import junit.framework.TestCase;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import junit.framework.TestCase;
 
 /**
  *
@@ -113,6 +114,15 @@ public final class ThreadPoolTestCase extends TestCase {
         assertTrue("Worker wasn't interrupted", interrupted.get());
     }
 
+    private static class Holder<T> {
+        private T instance;
+        public Holder(T instance) {
+            this.instance = instance;
+        }
+        public T get() { return instance; }
+        public void set(T instance) {this.instance = instance;}
+    }
+
     public void testBlocking() throws InterruptedException {
         final int queueSize = 20;
         final int coreThreads = 5;
@@ -150,7 +160,51 @@ public final class ThreadPoolTestCase extends TestCase {
         taskUnfreezer.countDown();
         assertTrue("Task never ran", latch.await(800L, TimeUnit.MILLISECONDS));
         otherThread.join(500L);
+        assertTrue("Simple Tasks never ran", taskFinishLine.await(800L, TimeUnit.MILLISECONDS));
         simpleQueueExecutor.shutdown();
+        final Holder<Boolean> callback = new Holder<Boolean>(false);
+        ((QueueExecutor)simpleQueueExecutor).addShutdownListener(new EventListener<Object>() {
+            @Override
+            public void handleEvent(Object attachment) {
+                callback.set(true);
+            } } , null);
+        assertTrue("Calback not called", callback.get());
         assertTrue("Executor not shut down in 800ms", simpleQueueExecutor.awaitTermination(800L, TimeUnit.MILLISECONDS));
+    }
+
+    public void testBlockingEmpty() throws InterruptedException {
+        final int queueSize = 20;
+        final int coreThreads = 5;
+        final int extraThreads = 5;
+        final int cnt = queueSize + coreThreads + extraThreads;
+        final ExecutorService simpleQueueExecutor = new QueueExecutor(coreThreads, coreThreads + extraThreads, 500L, TimeUnit.MILLISECONDS, new ArrayQueue<Runnable>(queueSize), threadFactory, true, null);
+        simpleQueueExecutor.shutdown();
+        final Holder<Boolean> callback = new Holder<Boolean>(false);
+        ((QueueExecutor)simpleQueueExecutor).addShutdownListener(new EventListener<Object>() {
+            @Override
+            public void handleEvent(Object attachment) {
+                callback.set(true);
+            } } , null);
+        assertTrue("Calback not called", callback.get());
+        assertTrue("Executor not shut down in 800ms", simpleQueueExecutor.awaitTermination(800L, TimeUnit.MILLISECONDS));
+        Thread.interrupted();
+    }
+
+    public void testQueuelessEmpty() throws InterruptedException {
+        final int queueSize = 20;
+        final int coreThreads = 5;
+        final int extraThreads = 5;
+        final int cnt = queueSize + coreThreads + extraThreads;
+        final ExecutorService simpleQueueExecutor = new QueuelessExecutor(threadFactory, SimpleDirectExecutor.INSTANCE, null, 500L);
+        simpleQueueExecutor.shutdown();
+        final Holder<Boolean> callback = new Holder<Boolean>(false);
+        ((QueuelessExecutor)simpleQueueExecutor).addShutdownListener(new EventListener<Object>() {
+            @Override
+            public void handleEvent(Object attachment) {
+                callback.set(true);
+            } } , null);
+        assertTrue("Calback not called", callback.get());
+        assertTrue("Executor not shut down in 800ms", simpleQueueExecutor.awaitTermination(800L, TimeUnit.MILLISECONDS));
+        Thread.interrupted();
     }
 }

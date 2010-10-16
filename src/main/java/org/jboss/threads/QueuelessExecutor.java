@@ -24,17 +24,18 @@ package org.jboss.threads;
 
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.Condition;
-import java.util.Set;
-import java.util.HashSet;
+
 import org.jboss.logging.Logger;
 import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
 
@@ -219,12 +220,17 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     }
 
     public void shutdown() {
+        boolean callShutdownListener = false;
         final Lock lock = this.lock;
         lock.lock();
         try {
             if (! stop) {
-                for (Thread runningThread : runningThreads) {
-                    runningThread.interrupt();
+                if (runningThreads.isEmpty()) {
+                    callShutdownListener = true;
+                } else {
+                    for (Thread runningThread : runningThreads) {
+                        runningThread.interrupt();
+                    }
                 }
             }
             stop = true;
@@ -235,6 +241,8 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
             taskEnqueued.signalAll();
         } finally {
             lock.unlock();
+            if (callShutdownListener)
+                shutdownListenable.shutdown();
         }
     }
 
