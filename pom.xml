@@ -36,7 +36,7 @@
     <groupId>org.jboss.threads</groupId>
     <artifactId>jboss-threads</artifactId>
     <packaging>jar</packaging>
-    <version>2.0.0.CR6-SNAPSHOT</version>
+    <version>2.0.0.CR6</version>
 
     <name>JBoss Threads</name>
 
