@@ -726,23 +726,24 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
                     if (stop || threadCount > maxThreads) {
                         // too many threads.  Handle a task if there is one, otherwise exit
                         return pollTask();
-                    } else if (!allowCoreThreadTimeout && threadCount < coreThreadLimit) {
-                        // ignore timeout until we are not a core thread or until core threads are allowed to time out
-                        try {
-                            enqueueCondition.await();
-                        } catch (InterruptedException e) {
-                            intr = true;
-                        }
-                    } else {
+                    } else if (allowCoreThreadTimeout || threadCount > coreThreadLimit) {
                         final TimeUnit timeUnit = keepAliveTimeUnit;
                         final long time = keepAliveTime;
                         final long remaining = time - timeUnit.convert(elapsed, TimeUnit.MILLISECONDS);
-                        if (remaining <= 0L && (allowCoreThreadTimeout || threadCount > coreThreadLimit)) {
+                        if (remaining > 0L) {
+                            try {
+                                enqueueCondition.await(remaining, timeUnit);
+                            } catch (InterruptedException e) {
+                                intr = true;
+                            }
+                        } else {
                             // the timeout has expired
                             return pollTask();
                         }
+                    } else {
+                        // ignore timeout until we are not a core thread or until core threads are allowed to time out
                         try {
-                            enqueueCondition.await(remaining, timeUnit);
+                            enqueueCondition.await();
                         } catch (InterruptedException e) {
                             intr = true;
                         }
