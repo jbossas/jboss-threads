@@ -93,8 +93,9 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
      * or the other {@code set*()} methods are ignored.
      *
      * @param result the result
+     * @return {@code true} if the result was successfully set, or {@code false} if a result was already set
      */
-    protected final void setResult(final T result) {
+    protected final boolean setResult(final T result) {
         List<Reg<?>> list;
         synchronized (this) {
             if (status == AsyncFuture.Status.WAITING) {
@@ -104,19 +105,22 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
                 list = listeners;
                 listeners = null;
             } else {
-                return;
+                return false;
             }
         }
         if (list != null) for (Reg<?> reg : list) {
             safeExecute(reg);
         }
+        return true;
     }
 
     /**
      * Set the cancelled result of this operation.  Once a result is set, calls to this
      * or the other {@code set*()} methods are ignored.
+     *
+     * @return {@code true} if the result was successfully set, or {@code false} if a result was already set
      */
-    protected final void setCancelled() {
+    protected final boolean setCancelled() {
         List<Reg<?>> list;
         synchronized (this) {
             if (status == AsyncFuture.Status.WAITING) {
@@ -125,12 +129,13 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
                 list = listeners;
                 listeners = null;
             } else {
-                return;
+                return false;
             }
         }
         if (list != null) for (Reg<?> reg : list) {
             safeExecute(reg);
         }
+        return true;
     }
 
     /**
@@ -138,8 +143,9 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
      * or the other {@code set*()} methods are ignored.
      *
      * @param cause the cause of failure
+     * @return {@code true} if the result was successfully set, or {@code false} if a result was already set
      */
-    protected final void setFailed(final Throwable cause) {
+    protected final boolean setFailed(final Throwable cause) {
         List<Reg<?>> list;
         synchronized (this) {
             if (status == AsyncFuture.Status.WAITING) {
@@ -149,12 +155,13 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
                 list = listeners;
                 listeners = null;
             } else {
-                return;
+                return false;
             }
         }
         if (list != null) for (Reg<?> reg : list) {
             safeExecute(reg);
         }
+        return true;
     }
 
     private <A> void safeExecute(final Reg<A> reg) {
