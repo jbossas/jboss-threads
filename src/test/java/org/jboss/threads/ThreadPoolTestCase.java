@@ -87,6 +87,7 @@ public final class ThreadPoolTestCase extends TestCase {
         final AtomicBoolean ran = new AtomicBoolean();
 
         final CountDownLatch startLatch = new CountDownLatch(1);
+        final CountDownLatch finLatch = new CountDownLatch(1);
         final ExecutorService simpleQueueExecutor = new QueueExecutor(5, 5, 500L, TimeUnit.MILLISECONDS, 1000, threadFactory, true, null);
         simpleQueueExecutor.execute(new Runnable() {
             public void run() {
@@ -96,6 +97,8 @@ public final class ThreadPoolTestCase extends TestCase {
                     Thread.sleep(5000L);
                 } catch (InterruptedException e) {
                     interrupted.set(true);
+                } finally {
+                    finLatch.countDown();
                 }
             }
         });
@@ -109,6 +112,7 @@ public final class ThreadPoolTestCase extends TestCase {
             fail("Task not rejected after shutdown");
         } catch (RejectedExecutionException t) {
         }
+        assertTrue("Task not finished", finLatch.await(300L, TimeUnit.MILLISECONDS));
         assertTrue("Executor not shut down in 800ms", simpleQueueExecutor.awaitTermination(800L, TimeUnit.MILLISECONDS));
         assertTrue("Task wasn't run", ran.get());
         assertTrue("Worker wasn't interrupted", interrupted.get());
