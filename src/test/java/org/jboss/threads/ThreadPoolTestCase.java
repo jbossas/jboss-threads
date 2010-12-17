@@ -167,11 +167,14 @@ public final class ThreadPoolTestCase extends TestCase {
         assertTrue("Simple Tasks never ran", taskFinishLine.await(800L, TimeUnit.MILLISECONDS));
         simpleQueueExecutor.shutdown();
         final Holder<Boolean> callback = new Holder<Boolean>(false);
+        final CountDownLatch shutdownLatch = new CountDownLatch(1);
         ((QueueExecutor)simpleQueueExecutor).addShutdownListener(new EventListener<Object>() {
             @Override
             public void handleEvent(Object attachment) {
                 callback.set(true);
+                shutdownLatch.countDown();
             } } , null);
+        shutdownLatch.await(100L, TimeUnit.MILLISECONDS);
         assertTrue("Calback not called", callback.get());
         assertTrue("Executor not shut down in 800ms", simpleQueueExecutor.awaitTermination(800L, TimeUnit.MILLISECONDS));
     }
