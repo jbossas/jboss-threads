@@ -111,6 +111,10 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
         setKeepAliveTime(milliseconds, TimeUnit.MILLISECONDS);
     }
 
+    public long getNumberOfFreeThreads() {
+        return getMaximumPoolSize() - getActiveCount();
+    }
+
     public int getCurrentThreadCount() {
         return getPoolSize();
     }
