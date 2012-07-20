@@ -76,6 +76,11 @@ class DelegatingBlockingExecutorService extends AbstractExecutorService implemen
         delegate.executeNonBlocking(task);
     }
 
+    @Override
+    public long getNumberOfFreeThreads() {
+        return delegate.getNumberOfFreeThreads();
+    }
+
     public static ExecutorService directExecutorService() {
         return new DelegatingExecutorService(JBossExecutors.directExecutor());
     }

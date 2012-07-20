@@ -40,6 +40,11 @@ class DelegatingDirectBlockingExecutor implements BlockingExecutor, DirectExecut
         delegate.execute(task);
     }
 
+    @Override
+    public long getNumberOfFreeThreads() {
+        return 0L;
+    }
+
     public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
         try {
             delegate.execute(task);

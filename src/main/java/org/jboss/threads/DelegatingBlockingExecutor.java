@@ -56,6 +56,11 @@ class DelegatingBlockingExecutor implements BlockingExecutor {
         delegate.executeNonBlocking(task);
     }
 
+    @Override
+    public long getNumberOfFreeThreads() {
+        return delegate.getNumberOfFreeThreads();
+    }
+
     public String toString() {
         return String.format("%s -> %s", super.toString(), delegate);
     }

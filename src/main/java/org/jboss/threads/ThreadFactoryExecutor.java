@@ -287,6 +287,11 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
         }
     }
 
+    @Override
+    public long getNumberOfFreeThreads() {
+        return getMaxThreads() - getCurrentThreadCount();
+    }
+
     public String toString() {
         return String.format("%s (%s)", super.toString(), factory);
     }
