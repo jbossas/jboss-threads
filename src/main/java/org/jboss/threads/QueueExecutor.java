@@ -35,7 +35,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-
 import org.jboss.logging.Logger;
 import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 
@@ -856,5 +855,10 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
                 }
             }
         }
+    }
+
+    @Override
+    public int getQueueSize() {
+        return queue.size();
     }
 }
