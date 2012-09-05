@@ -22,9 +22,9 @@
 
 package org.jboss.threads;
 
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
@@ -289,5 +289,10 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
 
     public String toString() {
         return String.format("%s (%s)", super.toString(), factory);
+    }
+
+    @Override
+    public int getQueueSize() {
+        return 0;
     }
 }

@@ -22,12 +22,12 @@
 
 package org.jboss.threads;
 
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.RejectedExecutionHandler;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 
@@ -162,5 +162,10 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
             }
             delegate.rejectedExecution(r, executor);
         }
+    }
+
+    @Override
+    public int getQueueSize() {
+        return getQueue().size();
     }
 }

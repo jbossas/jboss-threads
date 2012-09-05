@@ -125,4 +125,9 @@ public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolE
             delegate.rejectedExecution(r, executor);
         }
     }
+
+    @Override
+    public int getQueueSize() {
+        return getQueue().size();
+    }
 }

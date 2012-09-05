@@ -32,4 +32,6 @@ public interface ThreadExecutorMBean {
     int getCurrentThreadCount();
 
     int getLargestThreadCount();
+    
+    int getQueueSize();
 }
