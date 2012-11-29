@@ -273,6 +273,11 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
         }
     }
 
+    /** {@inheritDoc} */
+    public int getQueueSize() {
+        return 0;
+    }
+
     public int getRejectedCount() {
         return rejected.get();
     }

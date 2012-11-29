@@ -119,6 +119,11 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
         return rejectCount.get();
     }
 
+    /** {@inheritDoc} */
+    public int getQueueSize() {
+        return this.getQueue().size();
+    }
+
     public boolean isBlocking() {
         return false;
     }

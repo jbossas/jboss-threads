@@ -98,6 +98,11 @@ public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolE
     }
 
     /** {@inheritDoc} */
+    public int getQueueSize() {
+        return this.getQueue().size();
+    }
+
+    /** {@inheritDoc} */
     public <A> void addShutdownListener(final EventListener<A> shutdownListener, final A attachment) {
         shutdownListenable.addShutdownListener(shutdownListener, attachment);
     }
