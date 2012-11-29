@@ -796,6 +796,11 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         }
     }
 
+    /** {@inheritDoc} */
+    public int getQueueSize() {
+        return this.queue.size();
+    }
+
     private void runTask(Runnable task) {
         if (task != null) try {
             taskExecutor.execute(task);

@@ -179,6 +179,11 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         }
     }
 
+    /** {@inheritDoc} */
+    public int getQueueSize() {
+        return 0;
+    }
+
     public boolean isBlocking() {
         final Lock lock = this.lock;
         lock.lock();
