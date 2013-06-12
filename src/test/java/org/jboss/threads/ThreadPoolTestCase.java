@@ -214,4 +214,35 @@ public final class ThreadPoolTestCase extends TestCase {
         assertTrue("Executor not shut down in 800ms", simpleQueueExecutor.awaitTermination(800L, TimeUnit.MILLISECONDS));
         Thread.interrupted();
     }
+
+    public void testQueuelessKeepAlive() throws InterruptedException {
+        // Test for https://issues.jboss.org/browse/JBTHR-23 QueuelessExecutor repeats to execute previous runnable
+        final QueuelessExecutor simpleQueuelessExecutor = new QueuelessExecutor(threadFactory, SimpleDirectExecutor.INSTANCE, null, 100L);
+        simpleQueuelessExecutor.setMaxThreads(1);
+        final CountDownLatch latch = new CountDownLatch(1);
+        simpleQueuelessExecutor.execute(new Runnable() {
+                public void run() {
+                    latch.countDown();
+                }
+            });
+        latch.await(100L, TimeUnit.MILLISECONDS);
+        final Holder<Boolean> callback = new Holder<Boolean>(false);
+        simpleQueuelessExecutor.execute(new Runnable() {
+                boolean first = true;
+                public void run() {
+                    callback.set(true);
+                    if (!first) {
+                        callback.set(false);
+                    }
+                    first = false;
+                }
+            });
+        try {
+            Thread.sleep(500L);
+        } catch (InterruptedException ignore) { }
+        simpleQueuelessExecutor.shutdown();
+        assertTrue("Calback only called once", callback.get());
+        assertTrue("Executor not shut down in 800ms", simpleQueuelessExecutor.awaitTermination(800L, TimeUnit.MILLISECONDS));
+        Thread.interrupted();
+    }
 }
