@@ -645,6 +645,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                                     // wait for a job
                                     if (! awaitTimed(taskEnqueued, idleSince)) return;
                                 } while ((runnable = this.runnable) == null);
+                                this.runnable = null;
                             } finally {
                                 waitingWorker = null;
                                 workerDequeued.signal();
