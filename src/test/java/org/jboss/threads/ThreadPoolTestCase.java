@@ -245,4 +245,45 @@ public final class ThreadPoolTestCase extends TestCase {
         assertTrue("Executor not shut down in 800ms", simpleQueuelessExecutor.awaitTermination(800L, TimeUnit.MILLISECONDS));
         Thread.interrupted();
     }
+
+    public void testQueueRejection() throws InterruptedException {
+        final int queueSize = 1;
+        final int coreThreads = 1;
+        final int extraThreads = 0;
+        final int cnt = queueSize + coreThreads + extraThreads;
+
+        final ExecutorService queueExecutor = new QueueExecutor(coreThreads, coreThreads + extraThreads, 500L, TimeUnit.MILLISECONDS, queueSize, threadFactory, false, null);
+        final CountDownLatch taskUnfreezer = new CountDownLatch(1);
+        final Runnable task =  new Runnable() {
+			public void run() {
+				boolean running = true;
+				while (running) {
+					try {
+						taskUnfreezer.await();
+						running = false;
+					} catch (InterruptedException e) {
+					}
+				}
+			}
+        };
+
+        try {
+            try {
+                for (int i = 0; i < cnt; i++) {
+                    queueExecutor.execute(task);
+                }
+            } catch (RejectedExecutionException e) {
+                fail("unexpected RejectedExecutionException");
+            }
+            try {
+                queueExecutor.execute(task);
+                fail("Task not rejected after too many tasks");
+            } catch (RejectedExecutionException e) {
+                // expected
+            }
+        } finally {
+            taskUnfreezer.countDown();
+            queueExecutor.shutdown();
+        }
+    }
 }

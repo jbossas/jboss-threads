@@ -205,6 +205,8 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         }
         if (executor != null) {
             executor.execute(task);
+        } else {
+            throw new RejectedExecutionException();
         }
         return;
     }
