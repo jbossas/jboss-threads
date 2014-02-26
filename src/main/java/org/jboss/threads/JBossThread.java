@@ -187,7 +187,7 @@ public final class JBossThread extends Thread {
      *
      * @return the thread name info
      */
-    public ThreadNameInfo getThreadNameInfo() {
+    ThreadNameInfo getThreadNameInfo() {
         return threadNameInfo;
     }
 
@@ -197,7 +197,7 @@ public final class JBossThread extends Thread {
      * @param threadNameInfo the new thread name info
      * @throws SecurityException if the calling thread is not allowed to modify this thread
      */
-    public void setThreadNameInfo(final ThreadNameInfo threadNameInfo) throws SecurityException {
+    void setThreadNameInfo(final ThreadNameInfo threadNameInfo) throws SecurityException {
         checkAccess();
         this.threadNameInfo = threadNameInfo;
     }
