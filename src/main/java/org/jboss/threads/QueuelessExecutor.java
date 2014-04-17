@@ -314,6 +314,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     waitingWorker.setRunnable(task);
                     taskEnqueued.signal();
                     this.waitingWorker = null;
+                    workerDequeued.signal();
                     return;
                 }
                 // no worker thread was waiting
@@ -396,6 +397,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     waitingWorker.setRunnable(task);
                     taskEnqueued.signal();
                     this.waitingWorker = null;
+                    workerDequeued.signal();
                     return;
                 }
                 // no worker thread was waiting
@@ -464,6 +466,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     waitingWorker.setRunnable(task);
                     taskEnqueued.signal();
                     this.waitingWorker = null;
+                    workerDequeued.signal();
                     return;
                 }
                 // no worker thread was waiting
@@ -530,6 +533,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     waitingWorker.setRunnable(task);
                     taskEnqueued.signal();
                     this.waitingWorker = null;
+                    workerDequeued.signal();
                     return;
                 }
                 // no worker thread was waiting
@@ -652,8 +656,10 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                                 } while ((runnable = this.runnable) == null);
                                 this.runnable = null;
                             } finally {
-                                waitingWorker = null;
-                                workerDequeued.signal();
+                                if (waitingWorker == this) {
+                                    waitingWorker = null;
+                                    workerDequeued.signal();
+                                }
                             }
                         }
                     } finally {
