@@ -631,6 +631,8 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                         if (stop || runningThreads.size() > maxThreads) {
                             if (runningThreads.remove(thread) && runningThreads.isEmpty()) {
                                 threadDeath.signalAll();
+                                if (stop)
+                                    shutdownListenable.shutdown();
                             }
                             return;
                         }
