@@ -22,6 +22,11 @@
 
 package org.jboss.threads;
 
+import java.security.PrivilegedAction;
+import java.security.PrivilegedExceptionAction;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.jboss.logging.Logger;
 
 /**
@@ -33,6 +38,8 @@ public final class JBossThread extends Thread {
 
     private volatile InterruptHandler interruptHandler;
     private ThreadNameInfo threadNameInfo;
+
+    private final AtomicInteger intCnt = new AtomicInteger();
 
     /**
      * Construct a new instance.
@@ -98,6 +105,35 @@ public final class JBossThread extends Thread {
      * handler is called from the <em>calling</em> thread, not the thread being interrupted.
      */
     public void interrupt() {
+        if (Thread.currentThread() != this) checkAccess();
+        // fast check
+        if (isInterrupted()) return;
+        final AtomicInteger intCnt = this.intCnt;
+        int oldVal;
+        do {
+            oldVal = intCnt.get();
+            if ((oldVal & 0x8000_0000) != 0) {
+                // deferred interrupt already set
+                ihlog.tracef("Interrupting thread \"%s\" (already deferred)", this);
+                return;
+            }
+            if (oldVal == 0) {
+                synchronized (intCnt) {
+                    oldVal = intCnt.get();
+                    if (oldVal == 0) {
+                        doInterrupt();
+                        return;
+                    }
+                }
+            }
+            assert oldVal != 0;
+        } while (! intCnt.compareAndSet(oldVal, oldVal | 0x8000_0000));
+        ihlog.tracef("Interrupting thread \"%s\" (deferred)", this);
+    }
+
+    private void doInterrupt() {
+        assert Thread.holdsLock(intCnt);
+        if (isInterrupted()) return;
         ihlog.tracef("Interrupting thread \"%s\"", this);
         try {
             super.interrupt();
@@ -111,6 +147,168 @@ public final class JBossThread extends Thread {
                 }
             }
         }
+    }
+
+    public boolean isInterrupted() {
+        return this == Thread.currentThread() ? super.isInterrupted() : super.isInterrupted() || (intCnt.get() & 0x8000_0000) != 0;
+    }
+
+    /**
+     * Defer interrupts for the duration of some task.  Once the task is complete, any deferred interrupt will be
+     * delivered to the thread, thus the thread interrupt status should be checked upon return.  If the current thread
+     * is not a {@code JBossThread}, the task is simply run as-is.
+     *
+     * @param task the task to run
+     */
+    public static void executeWithInterruptDeferred(final Runnable task) {
+        executeWithInterruptDeferred(JBossExecutors.directExecutor(), task);
+    }
+
+    /**
+     * Defer interrupts for the duration of some task.  Once the task is complete, any deferred interrupt will be
+     * delivered to the thread, thus the thread interrupt status should be checked upon return.  If the current thread
+     * is not a {@code JBossThread}, the task is simply run as-is.
+     *
+     * @param directExecutor the task executor to use
+     * @param task the task to run
+     */
+    public static void executeWithInterruptDeferred(final DirectExecutor directExecutor, final Runnable task) {
+        final JBossThread thread = currentThread();
+        if (thread == null) {
+            directExecutor.execute(task);
+            return;
+        }
+        boolean intr = registerDeferral(thread);
+        assert ! Thread.interrupted();
+        try {
+            directExecutor.execute(task);
+        } finally {
+            unregisterDeferral(intr, thread);
+        }
+    }
+
+    /**
+     * Defer interrupts for the duration of some task.  Once the task is complete, any deferred interrupt will be
+     * delivered to the thread, thus the thread interrupt status should be checked upon return.  If the current thread
+     * is not a {@code JBossThread}, the task is simply run as-is.
+     *
+     * @param action the task to run
+     * @param <T> the callable's return type
+     * @param T the value returned from the callable
+     * @throws Exception if the action throws an exception
+     */
+    public static <T> T executeWithInterruptDeferred(final Callable<T> action) throws Exception {
+        final JBossThread thread = currentThread();
+        if (thread == null) {
+            return action.call();
+        }
+        boolean intr = registerDeferral(thread);
+        assert ! Thread.interrupted();
+        try {
+            return action.call();
+        } finally {
+            unregisterDeferral(intr, thread);
+        }
+    }
+
+    /**
+     * Defer interrupts for the duration of some task.  Once the task is complete, any deferred interrupt will be
+     * delivered to the thread, thus the thread interrupt status should be checked upon return.  If the current thread
+     * is not a {@code JBossThread}, the task is simply run as-is.
+     *
+     * @param action the task to run
+     * @param <T> the action's return type
+     * @param T the value returned from the callable
+     */
+    public static <T> T executeWithInterruptDeferred(final PrivilegedAction<T> action) {
+        final JBossThread thread = currentThread();
+        if (thread == null) {
+            return action.run();
+        }
+        boolean intr = registerDeferral(thread);
+        assert ! Thread.interrupted();
+        try {
+            return action.run();
+        } finally {
+            unregisterDeferral(intr, thread);
+        }
+    }
+
+    /**
+     * Defer interrupts for the duration of some task.  Once the task is complete, any deferred interrupt will be
+     * delivered to the thread, thus the thread interrupt status should be checked upon return.  If the current thread
+     * is not a {@code JBossThread}, the task is simply run as-is.
+     *
+     * @param action the task to run
+     * @param <T> the action's return type
+     * @param T the value returned from the callable
+     * @throws Exception if the action throws an exception
+     */
+    public static <T> T executeWithInterruptDeferred(final PrivilegedExceptionAction<T> action) throws Exception {
+        final JBossThread thread = currentThread();
+        if (thread == null) {
+            return action.run();
+        }
+        boolean intr = registerDeferral(thread);
+        assert ! Thread.interrupted();
+        try {
+            return action.run();
+        } finally {
+            unregisterDeferral(intr, thread);
+        }
+    }
+
+    private static void unregisterDeferral(final boolean intr, final JBossThread thread) {
+        int oldVal;
+        final AtomicInteger intCnt = thread.intCnt;
+        do {
+            oldVal = intCnt.get();
+            if ((oldVal & 0x7fff_ffff) == 1) {
+                synchronized (intCnt) {
+                    oldVal = intCnt.get();
+                    if (oldVal == 1) {
+                        intCnt.set(0);
+                        if (intr) {
+                            thread.doInterrupt();
+                            break;
+                        }
+                        // no interrupt occurred during the operation
+                        break;
+                    } else if (oldVal == 0x8000_0001) {
+                        intCnt.set(0);
+                        // deferral complete
+                        thread.doInterrupt();
+                        break;
+                    }
+                }
+            }
+            assert (oldVal & 0x7fff_ffff) > 1;
+        } while (! intCnt.compareAndSet(oldVal, oldVal - 1));
+    }
+
+    private static boolean registerDeferral(final JBossThread thread) {
+        boolean intr = false;
+        final AtomicInteger intCnt = thread.intCnt;
+        int oldVal;
+        do {
+            oldVal = intCnt.get();
+            if (oldVal == 0) {
+                synchronized (intCnt) {
+                    oldVal = intCnt.get();
+                    if (oldVal == 0) {
+                        intCnt.set(1);
+                        intr = Thread.interrupted();
+                        break;
+                    }
+                }
+            }
+            if (oldVal == 0x7fff_ffff) {
+                // extremely unlikely
+                throw new IllegalStateException();
+            }
+            assert (oldVal & 0x7fff_ffff) > 0;
+        } while (! intCnt.compareAndSet(oldVal, oldVal + 1));
+        return intr;
     }
 
     /**
