@@ -614,6 +614,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
             final Thread thread = Thread.currentThread();
             long idleSince = Long.MAX_VALUE;
             Runnable runnable = this.runnable;
+            boolean last = false;
             this.runnable = null;
             try {
                 MAIN: for (;;) {
@@ -631,6 +632,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                         if (stop || runningThreads.size() > maxThreads) {
                             if (runningThreads.remove(thread) && runningThreads.isEmpty()) {
                                 threadDeath.signalAll();
+                                last = true;
                             }
                             return;
                         }
@@ -667,7 +669,6 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     }
                 }
             } finally {
-                boolean last = false;
                 lock.lock();
                 try {
                     if (stop && runningThreads.remove(thread) && runningThreads.isEmpty()) {
