@@ -591,8 +591,8 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         }
 
         private boolean awaitTimed(Condition condition, long idleSince) {
-            final long end = clipHigh(System.currentTimeMillis() + keepAliveTime);
-            long remaining = end - idleSince;
+            final long end = clipHigh(idleSince + keepAliveTime);
+            long remaining = end - System.currentTimeMillis();
             if (remaining < 0L) {
                 return false;
             }
@@ -671,7 +671,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
             } finally {
                 lock.lock();
                 try {
-                    if (stop && runningThreads.remove(thread) && runningThreads.isEmpty()) {
+                    if (runningThreads.remove(thread) && stop && runningThreads.isEmpty()) {
                         threadDeath.signalAll();
                         last = true;
                     }
