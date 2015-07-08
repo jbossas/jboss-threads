@@ -60,22 +60,6 @@ public final class JBossThreadFactory implements ThreadFactory {
      * @param stackSize the JVM-specific stack size, or {@code null} to leave it unspecified
      */
     public JBossThreadFactory(ThreadGroup threadGroup, final Boolean daemon, final Integer initialPriority, String namePattern, final Thread.UncaughtExceptionHandler uncaughtExceptionHandler, final Long stackSize) {
-        this(threadGroup, daemon, initialPriority, namePattern, uncaughtExceptionHandler, stackSize, AccessController.getContext());
-    }
-
-    /**
-     * Construct a new instance.  The access control context of the calling thread will be the one used to create
-     * new threads if a security manager is installed.
-     *
-     * @param threadGroup the thread group to assign threads to by default (may be {@code null})
-     * @param daemon whether the created threads should be daemon threads, or {@code null} to use the thread group's setting
-     * @param initialPriority the initial thread priority, or {@code null} to use the thread group's setting
-     * @param namePattern the name pattern string
-     * @param uncaughtExceptionHandler the uncaught exception handler, if any
-     * @param stackSize the JVM-specific stack size, or {@code null} to leave it unspecified
-     * @param creatingContext the access control context to use to create the threads
-     */
-    public JBossThreadFactory(ThreadGroup threadGroup, final Boolean daemon, final Integer initialPriority, String namePattern, final Thread.UncaughtExceptionHandler uncaughtExceptionHandler, final Long stackSize, final AccessControlContext creatingContext) {
         if (threadGroup == null) {
             final SecurityManager sm = System.getSecurityManager();
             threadGroup = sm != null ? sm.getThreadGroup() : Thread.currentThread().getThreadGroup();
@@ -90,12 +74,30 @@ public final class JBossThreadFactory implements ThreadFactory {
             namePattern = "pool-%f-thread-%t";
         }
         this.namePattern = namePattern;
-        this.creatingContext = creatingContext;
+        this.creatingContext = AccessController.getContext();
+    }
+
+    /**
+     * Construct a new instance.  The access control context of the calling thread will be the one used to create
+     * new threads if a security manager is installed.
+     *
+     * @param threadGroup the thread group to assign threads to by default (may be {@code null})
+     * @param daemon whether the created threads should be daemon threads, or {@code null} to use the thread group's setting
+     * @param initialPriority the initial thread priority, or {@code null} to use the thread group's setting
+     * @param namePattern the name pattern string
+     * @param uncaughtExceptionHandler the uncaught exception handler, if any
+     * @param stackSize the JVM-specific stack size, or {@code null} to leave it unspecified
+     * @param ignored <em>ignored</em>
+     * @deprecated This constructor is unsafe and now just delegates to {@link JBossThreadFactory#JBossThreadFactory(ThreadGroup, Boolean, Integer, String, Thread.UncaughtExceptionHandler, Long) the other constructor} without using the given access control context.  It will be removed as of version 2.3.0.Final.
+     */
+    @Deprecated
+    public JBossThreadFactory(ThreadGroup threadGroup, final Boolean daemon, final Integer initialPriority, String namePattern, final Thread.UncaughtExceptionHandler uncaughtExceptionHandler, final Long stackSize, final AccessControlContext ignored) {
+        this(threadGroup, daemon, initialPriority, namePattern, uncaughtExceptionHandler, stackSize);
     }
 
     public Thread newThread(final Runnable target) {
         final AccessControlContext context;
-        if (System.getSecurityManager() != null && (context = creatingContext) != null) {
+        if ((context = creatingContext) != null) {
             return AccessController.doPrivileged(new ThreadCreateAction(target), context);
         } else {
             return createThread(target);
