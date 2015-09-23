@@ -48,7 +48,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
 
     private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
     private final AtomicInteger rejectCount = new AtomicInteger();
-    private final AtomicInteger idleWorkers = new AtomicInteger();
+//    private final AtomicInteger idleWorkers = new AtomicInteger();
     
 
     public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
@@ -377,7 +377,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
         /** Per-thread task counter */
         volatile long completedTasks;
         /**Indicates if the worker is idle.**/
-        boolean idle;
+//        boolean idle;
 
         /**
          * Creates with given first task and thread from ThreadFactory.
@@ -386,11 +386,11 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
         Worker(Runnable firstTask) {
             setState(-1); // inhibit interrupts until runWorker
             this.firstTask = firstTask;
-            this.idle = false;
-            if (firstTask==null){
-                idleWorkers.incrementAndGet();
-                this.idle = true;
-            }
+//            this.idle = false;
+//            if (firstTask==null){
+//                idleWorkers.incrementAndGet();
+//                this.idle = true;
+ //           }
             this.thread = getThreadFactory().newThread(this);
         }
 
@@ -581,37 +581,15 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
             mainLock.unlock();
         }
     }
-    
-    
-    private int countIdleWorkers() {
-        final ReentrantLock mainLock = this.mainLock;
-        int idleCount = 0;
-        mainLock.lock();
-        try {
-            for (Worker w : workers) {
-                Thread t = w.thread;
-                if (!t.isInterrupted() && !w.tryLock()) {
-                    try {
-                        idleCount++;
-                    } catch (SecurityException ignore) {
-                    }
-                }
-            }
-        } finally {
-            mainLock.unlock();
-        }
-        
-        return idleCount;
-    }
-    
-    private boolean existIdleWorker() {
+
+/*    private boolean existIdleWorker() {
         boolean idle = false;
         if (workQueue.size() - idleWorkers.get() < 0)
             idle = true;
         
         return idle;
     }
-
+*/
     /**
      * Common form of interruptIdleWorkers, to avoid having to
      * remember what the boolean argument means.
@@ -880,7 +858,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
                     workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) :
                     workQueue.take();
                 if (r != null) {
-                    idleWorkers.decrementAndGet();
+//                    idleWorkers.decrementAndGet();
                     return r;
                 }
                 
@@ -946,7 +924,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
             while (task != null || (task = getTask()) != null) {
                 
                 w.lock();
-                w.idle = false;
+//                w.idle = false;
                 // If pool is stopping, ensure thread is interrupted;
                 // if not, ensure thread is not interrupted.  This
                 // requires a recheck in second case to deal with
@@ -974,15 +952,15 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
                 } finally {
                     task = null;
                     w.completedTasks++;
-                    idleWorkers.incrementAndGet();
-                    w.idle=true;
+//                    idleWorkers.incrementAndGet();
+//                    w.idle=true;
                     w.unlock();
                 }
             }
             completedAbruptly = false;
         } finally {
-            if(w.idle==true)
-                idleWorkers.decrementAndGet();
+//            if(w.idle==true)
+//                idleWorkers.decrementAndGet();
             processWorkerExit(w, completedAbruptly);
         }
     }
@@ -1187,7 +1165,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
             }     
             c = ctl.get();
         }
-
+/*
         if (maximumPoolSize != corePoolSize) {
             if (workerCountOf(c) < maximumPoolSize) {
                 if (!existIdleWorker()) {
@@ -1201,17 +1179,17 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
                 c = ctl.get();
             }
         }
-        
+        */
         if (isRunning(c) && workQueue.offer(command)) {
             int recheck = ctl.get();
             if (! isRunning(recheck) && remove(command))
                 reject(command);
             else if (workerCountOf(recheck) == 0)
                 addWorker(null, false);
-            else if (!existIdleWorker() && workerCountOf(recheck) < maximumPoolSize) {
+       /*     else if (maximumPoolSize != corePoolSize && !existIdleWorker() && workerCountOf(recheck) < maximumPoolSize) {
                 if (!addWorker(command, false))
                     reject(command);
-            }
+            }*/
         }
         else if (!addWorker(command, false))
             reject(command);
