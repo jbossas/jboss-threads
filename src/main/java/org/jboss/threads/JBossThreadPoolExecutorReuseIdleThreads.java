@@ -48,6 +48,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
 
     private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
     private final AtomicInteger rejectCount = new AtomicInteger();
+    private final AtomicInteger idleWorkers = new AtomicInteger();
     
 
     public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
@@ -375,6 +376,8 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
         Runnable firstTask;
         /** Per-thread task counter */
         volatile long completedTasks;
+        /**Indicates if the worker is idle.**/
+        boolean idle;
 
         /**
          * Creates with given first task and thread from ThreadFactory.
@@ -383,6 +386,11 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
         Worker(Runnable firstTask) {
             setState(-1); // inhibit interrupts until runWorker
             this.firstTask = firstTask;
+            this.idle = false;
+            if (firstTask==null){
+                idleWorkers.incrementAndGet();
+                this.idle = true;
+            }
             this.thread = getThreadFactory().newThread(this);
         }
 
@@ -572,6 +580,22 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
         } finally {
             mainLock.unlock();
         }
+    }
+
+    private boolean existsIdleWorker() {
+        boolean idle = false;
+        if (workQueue.size() - idleWorkers.get() < 0)
+            idle = true;
+        
+        return idle;
+    }
+    
+     private boolean existEnoughIdleWorkers() {
+        boolean existEnoughtIdles = false;
+        if (workQueue.size() - idleWorkers.get() <= 0)
+            existEnoughtIdles = true;
+        
+        return existEnoughtIdles;
     }
 
     /**
@@ -842,6 +866,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
                     workQueue.poll(keepAliveTime, TimeUnit.NANOSECONDS) :
                     workQueue.take();
                 if (r != null) {
+                    idleWorkers.decrementAndGet();
                     return r;
                 }
                 
@@ -907,6 +932,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
             while (task != null || (task = getTask()) != null) {
                 
                 w.lock();
+                w.idle = false;
                 // If pool is stopping, ensure thread is interrupted;
                 // if not, ensure thread is not interrupted.  This
                 // requires a recheck in second case to deal with
@@ -934,11 +960,15 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
                 } finally {
                     task = null;
                     w.completedTasks++;
+                    idleWorkers.incrementAndGet();
+                    w.idle=true;
                     w.unlock();
                 }
             }
             completedAbruptly = false;
         } finally {
+            if(w.idle==true)
+                idleWorkers.decrementAndGet();
             processWorkerExit(w, completedAbruptly);
         }
     }
@@ -1118,7 +1148,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
         /*
          * Proceed in 3 steps:
          *
-         * 1. If fewer than corePoolSize threads are running, try to
+         * 1. If fewer than maximumPoolSize threads are running and no idle workers exist, try to
          * start a new thread with the given command as its first
          * task.  The call to addWorker atomically checks runState and
          * workerCount, and so prevents false alarms that would add
@@ -1137,6 +1167,7 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
          */
 
         int c = ctl.get();
+
         if (workerCountOf(c) < corePoolSize) {
             if (addWorker(command, true)) {
                 return;
@@ -1144,12 +1175,29 @@ public final class JBossThreadPoolExecutorReuseIdleThreads extends AbstractExecu
             c = ctl.get();
         }
 
+        if (workerCountOf(c) < maximumPoolSize) {
+            if (!existsIdleWorker()) {
+                if (addWorker(command, false)) {
+                    return;
+                }
+            }
+            c = ctl.get();
+        }
+        
         if (isRunning(c) && workQueue.offer(command)) {
             int recheck = ctl.get();
             if (! isRunning(recheck) && remove(command))
                 reject(command);
             else if (workerCountOf(recheck) == 0)
                 addWorker(null, false);
+            else if (!existEnoughIdleWorkers() && workerCountOf(recheck) < maximumPoolSize) {
+                Runnable r = workQueue.poll();
+                if (r != null) {
+                    if (!addWorker(r, false))
+                        if (!workQueue.offer(r))
+                            reject(r);
+                }
+            }
         }
         else if (!addWorker(command, false))
             reject(command);
