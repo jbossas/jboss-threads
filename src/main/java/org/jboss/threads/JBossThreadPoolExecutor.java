@@ -84,7 +84,7 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
     }
 
     public void setAllowCoreThreadTimeout(final boolean allow) {
-        setAllowCoreThreadTimeout(allow);
+        allowCoreThreadTimeOut(allow);
     }
 
     public int getMaxThreads() {
