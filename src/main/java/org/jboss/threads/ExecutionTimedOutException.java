@@ -27,6 +27,7 @@ import java.util.concurrent.RejectedExecutionException;
 /**
  * Thrown when an execute-with-timeout method is called and the timeout elapsed before a task could be <b>accepted</b>.
  */
+@Deprecated
 public class ExecutionTimedOutException extends RejectedExecutionException {
 
     private static final long serialVersionUID = 6577491781534695133L;

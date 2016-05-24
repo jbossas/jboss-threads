@@ -32,7 +32,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.Collection;
 import java.security.PrivilegedAction;
 import java.security.AccessController;
-import java.security.AccessControlContext;
 import java.security.Permission;
 import org.jboss.logging.Logger;
 
@@ -52,8 +51,11 @@ public final class JBossExecutors {
     private static final DirectExecutorService REJECTING_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(RejectingExecutor.INSTANCE);
     private static final DirectExecutorService DISCARDING_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(DiscardingExecutor.INSTANCE);
 
+    @Deprecated
     private static final BlockingExecutor BLOCKING_DIRECT_EXECUTOR = new DelegatingDirectBlockingExecutor(SimpleDirectExecutor.INSTANCE);
+    @Deprecated
     private static final BlockingExecutor BLOCKING_REJECTING_EXECUTOR = new DelegatingDirectBlockingExecutor(RejectingExecutor.INSTANCE);
+    @Deprecated
     private static final BlockingExecutor BLOCKING_DISCARDING_EXECUTOR = new DelegatingDirectBlockingExecutor(DiscardingExecutor.INSTANCE);
 
     // ==================================================
@@ -271,6 +273,7 @@ public final class JBossExecutors {
      *
      * @return the blocking direct executor
      */
+    @Deprecated
     public static BlockingExecutor blockingDirectExecutor() {
         return BLOCKING_DIRECT_EXECUTOR;
     }
@@ -280,6 +283,7 @@ public final class JBossExecutors {
      *
      * @return the executor
      */
+    @Deprecated
     public static BlockingExecutor blockingDiscardingExecutor() {
         return BLOCKING_DISCARDING_EXECUTOR;
     }
@@ -289,6 +293,7 @@ public final class JBossExecutors {
      *
      * @return the executor
      */
+    @Deprecated
     public static BlockingExecutor blockingRejectingExecutor() {
         return BLOCKING_REJECTING_EXECUTOR;
     }
@@ -316,6 +321,7 @@ public final class JBossExecutors {
      * @param delegate the delegate direct executor
      * @return the blocking executor
      */
+    @Deprecated
     public static BlockingExecutor directBlockingExecutor(final DirectExecutor delegate) {
         return new DelegatingDirectBlockingExecutor(delegate);
     }
@@ -347,7 +353,9 @@ public final class JBossExecutors {
      *
      * @param factory the thread factory to use
      * @return the executor
+     * @deprecated Use {@link EnhancedQueueExecutor} instead.
      */
+    @Deprecated
     public static BlockingExecutor threadFactoryExecutor(final ThreadFactory factory) {
         return new ThreadFactoryExecutor(factory, Integer.MAX_VALUE, false, directExecutor());
     }
@@ -359,7 +367,9 @@ public final class JBossExecutors {
      * @param factory the thread factory to use
      * @param maxThreads the maximum number of allowed threads
      * @return the executor
+     * @deprecated Use {@link EnhancedQueueExecutor} instead.
      */
+    @Deprecated
     public static BlockingExecutor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads) {
         return new ThreadFactoryExecutor(factory, maxThreads, false, directExecutor());
     }
@@ -373,7 +383,9 @@ public final class JBossExecutors {
      * @param maxThreads the maximum number of allowed threads
      * @param blocking {@code true} if the submitter should block when the maximum number of threads has been reached
      * @return the executor
+     * @deprecated Use {@link EnhancedQueueExecutor} instead.
      */
+    @Deprecated
     public static BlockingExecutor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads, final boolean blocking) {
         return new ThreadFactoryExecutor(factory, maxThreads, blocking, directExecutor());
     }
@@ -388,7 +400,9 @@ public final class JBossExecutors {
      * @param blocking {@code true} if the submitter should block when the maximum number of threads has been reached
      * @param taskExecutor the executor which should run each task
      * @return the executor
+     * @deprecated Use {@link EnhancedQueueExecutor} instead.
      */
+    @Deprecated
     public static BlockingExecutor threadFactoryExecutor(final ThreadFactory factory, final int maxThreads, final boolean blocking, final DirectExecutor taskExecutor) {
         return new ThreadFactoryExecutor(factory, maxThreads, blocking, taskExecutor);
     }
@@ -457,6 +471,7 @@ public final class JBossExecutors {
     // PROTECTED EXECUTOR SERVICE WRAPPERS
     // ==================================================
 
+    @Deprecated
     public static BlockingExecutor protectedBlockingExecutor(final BlockingExecutor target) {
         return new DelegatingBlockingExecutor(target);
     }
@@ -501,6 +516,7 @@ public final class JBossExecutors {
      * @param target the target executor
      * @return the executor service
      */
+    @Deprecated
     public static BlockingExecutorService protectedBlockingExecutorService(final BlockingExecutor target) {
         return new DelegatingBlockingExecutorService(target);
     }

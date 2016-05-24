@@ -28,6 +28,7 @@ import java.util.concurrent.RejectedExecutionException;
  * Thrown when a {@link java.util.concurrent.Executor#execute(Runnable)} submission is interrupted before the task could be accepted.  If
  * this exception is thrown, the thread's {@code interrupted} flag will also be set.
  */
+@Deprecated
 public class ExecutionInterruptedException extends RejectedExecutionException {
 
     private static final long serialVersionUID = -8420751681898632287L;

@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
 
+@Deprecated
 class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecutorMBean {
 
     private final ThreadFactory factory;

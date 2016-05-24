@@ -31,6 +31,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
+@Deprecated
 class DelegatingBlockingExecutorService extends AbstractExecutorService implements BlockingExecutorService {
     private final BlockingExecutor delegate;
 

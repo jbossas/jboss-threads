@@ -25,6 +25,7 @@ package org.jboss.threads;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
+@Deprecated
 class DelegatingDirectBlockingExecutor implements BlockingExecutor, DirectExecutor {
     private final DirectExecutor delegate;
 

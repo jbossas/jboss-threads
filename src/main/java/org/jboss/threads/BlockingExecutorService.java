@@ -29,5 +29,6 @@ import java.util.concurrent.ExecutorService;
  *
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
+@Deprecated
 public interface BlockingExecutorService extends BlockingExecutor, ExecutorService {
 }

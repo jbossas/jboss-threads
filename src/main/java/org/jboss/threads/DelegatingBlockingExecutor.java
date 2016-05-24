@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit;
  * An executor that simply delegates to another executor.  Use instances of this class to hide extra methods on
  * another executor.
  */
+@Deprecated
 class DelegatingBlockingExecutor implements BlockingExecutor {
     private final BlockingExecutor delegate;
 

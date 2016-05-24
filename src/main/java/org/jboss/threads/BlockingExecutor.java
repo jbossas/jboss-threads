@@ -26,9 +26,14 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import org.wildfly.common.Assert;
+
 /**
  * An executor which can optionally block or not block on task submission.
+ *
+ * @deprecated Executors in this package will always accept tasks immediately.
  */
+@Deprecated
 public interface BlockingExecutor extends Executor {
 
     /**
@@ -84,4 +89,31 @@ public interface BlockingExecutor extends Executor {
      * @throws NullPointerException if command is {@code null}
      */
     void executeNonBlocking(Runnable task) throws RejectedExecutionException;
+
+    /**
+     * Convert an executor to a "blocking" executor which never actually blocks.
+     *
+     * @param executor the executor (must not be {@code null})
+     * @return the blocking executor (not {@code null})
+     */
+    static BlockingExecutor of(Executor executor) {
+        Assert.checkNotNullParam("executor", executor);
+        return executor instanceof BlockingExecutor ? (BlockingExecutor) executor : new BlockingExecutor() {
+            public void execute(final Runnable task) {
+                executor.execute(task);
+            }
+
+            public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
+                executor.execute(task);
+            }
+
+            public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
+                executor.execute(task);
+            }
+
+            public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
+                executor.execute(task);
+            }
+        };
+    }
 }
