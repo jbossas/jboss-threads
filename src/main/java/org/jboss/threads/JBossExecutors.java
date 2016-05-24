@@ -139,36 +139,13 @@ public final class JBossExecutors {
     }
 
     /**
-     * Create a direct executor which runs with the privileges given by the supplied {@code AccessControlContext} instance.
-     *
-     * @param delegate the executor to delegate to at the privileged level
-     * @param context the {@code AccessControlContext} to use
-     * @return the new direct executor
-     */
-    public static DirectExecutor privilegedExecutor(final DirectExecutor delegate, final AccessControlContext context) {
-        return new PrivilegedExecutor(delegate, context);
-    }
-
-    /**
-     * Create a direct executor which runs with the privileges given by the supplied class' protection domain.
-     *
-     * @param delegate the executor to delegate to at the privileged level
-     * @param targetClass the target class whose protection domain should be used
-     * @return the new direct executor
-     * @throws SecurityException if there is a security manager installed and the caller lacks the {@code "getProtectionDomain"} {@link RuntimePermission}
-     */
-    public static DirectExecutor privilegedExecutor(final DirectExecutor delegate, final Class<?> targetClass) throws SecurityException {
-        return new PrivilegedExecutor(delegate, targetClass);
-    }
-
-    /**
      * Create a direct executor which runs with the privileges given by the current access control context.
      *
      * @param delegate the executor to delegate to at the privileged level
      * @return the new direct executor
      */
     public static DirectExecutor privilegedExecutor(final DirectExecutor delegate) {
-        return privilegedExecutor(delegate, AccessController.getContext());
+        return new PrivilegedExecutor(delegate);
     }
 
     /**

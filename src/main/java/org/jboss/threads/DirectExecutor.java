@@ -32,7 +32,7 @@ import java.util.concurrent.Executor;
  * @see JBossExecutors#directExecutor()
  * @see JBossExecutors#rejectingExecutor()
  * @see JBossExecutors#discardingExecutor()
- * @see JBossExecutors#privilegedExecutor(org.jboss.threads.DirectExecutor, java.security.AccessControlContext)
+ * @see JBossExecutors#privilegedExecutor(org.jboss.threads.DirectExecutor)
  * @see JBossExecutors#contextClassLoaderExecutor(org.jboss.threads.DirectExecutor, java.lang.ClassLoader)
  * @see JBossExecutors#threadNameExecutor(org.jboss.threads.DirectExecutor, java.lang.String)
  * @see JBossExecutors#threadNameNotateExecutor(org.jboss.threads.DirectExecutor, java.lang.String)

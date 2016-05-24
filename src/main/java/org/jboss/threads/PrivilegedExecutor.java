@@ -25,35 +25,22 @@ package org.jboss.threads;
 import java.security.AccessControlContext;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
-import java.security.ProtectionDomain;
 
 class PrivilegedExecutor implements DirectExecutor {
 
     private final DirectExecutor delegate;
     private final AccessControlContext context;
 
-    PrivilegedExecutor(final DirectExecutor delegate, final AccessControlContext context) {
+    PrivilegedExecutor(final DirectExecutor delegate) {
         this.delegate = delegate;
-        this.context = context;
-    }
-
-    PrivilegedExecutor(final DirectExecutor delegate, final Class<?> targetClass) throws SecurityException {
-        this.delegate = delegate;
-        context = new AccessControlContext(new ProtectionDomain[] { targetClass.getProtectionDomain() });
+        this.context = AccessController.getContext();
     }
 
     public void execute(final Runnable command) {
-        final SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            AccessController.doPrivileged(new PrivilegedAction<Void>() {
-                public Void run() {
-                    delegate.execute(command);
-                    return null;
-                }
-            }, context);
-        } else {
+        AccessController.doPrivileged((PrivilegedAction<Void>) () -> {
             delegate.execute(command);
-        }
+            return null;
+        }, context);
     }
 
     public String toString() {
