@@ -26,8 +26,18 @@ import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 
 import org.jboss.logging.Logger;
+import org.wildfly.common.Assert;
+import org.wildfly.common.function.ExceptionBiConsumer;
+import org.wildfly.common.function.ExceptionBiFunction;
+import org.wildfly.common.function.ExceptionConsumer;
+import org.wildfly.common.function.ExceptionFunction;
+import org.wildfly.common.function.ExceptionObjIntConsumer;
+import org.wildfly.common.function.ExceptionObjLongConsumer;
+import org.wildfly.common.function.ExceptionRunnable;
+import org.wildfly.common.function.ExceptionSupplier;
 
 /**
  * A JBoss thread.  Supports logging and extra operations.
@@ -39,7 +49,36 @@ public class JBossThread extends Thread {
     private volatile InterruptHandler interruptHandler;
     private ThreadNameInfo threadNameInfo;
 
-    private final AtomicInteger intCnt = new AtomicInteger();
+    /**
+     * The thread is maybe interrupted.  Possible transitions:
+     * <ul>
+     *     <li>{@link #STATE_INTERRUPT_DEFERRED}</li>
+     *     <li>{@link #STATE_INTERRUPT_IN_PROGRESS}</li>
+     * </ul>
+     */
+    private static final int STATE_MAYBE_INTERRUPTED = 0;
+    /**
+     * The thread is not interrupted, and interrupts will be deferred.  Possible transitions:
+     * <ul>
+     *     <li>{@link #STATE_MAYBE_INTERRUPTED}</li>
+     *     <li>{@link #STATE_INTERRUPT_PENDING}</li>
+     * </ul>
+     */
+    private static final int STATE_INTERRUPT_DEFERRED = 1;
+    /**
+     * The thread is not interrupted, but there is an interrupt pending for once deferral is ended.  Possible transitions:
+     * <ul>
+     *     <li>{@link #STATE_INTERRUPT_IN_PROGRESS}</li>
+     * </ul>
+     */
+    private static final int STATE_INTERRUPT_PENDING = 2;
+    /**
+     * The thread is in the process of executing interruption logic.  If the thread attempts to defer interrupts
+     * during this phase, it will block until the interruption logic is complete.
+     */
+    private static final int STATE_INTERRUPT_IN_PROGRESS = 3;
+
+    private final AtomicInteger stateRef = new AtomicInteger();
 
     /**
      * Construct a new instance.
@@ -105,34 +144,40 @@ public class JBossThread extends Thread {
      * handler is called from the <em>calling</em> thread, not the thread being interrupted.
      */
     public void interrupt() {
-        if (Thread.currentThread() != this) checkAccess();
+        final boolean differentThread = Thread.currentThread() != this;
+        if (differentThread) checkAccess();
         // fast check
         if (isInterrupted()) return;
-        final AtomicInteger intCnt = this.intCnt;
-        int oldVal;
+        final AtomicInteger stateRef = this.stateRef;
+        int oldVal, newVal;
         do {
-            oldVal = intCnt.get();
-            if ((oldVal & 0x8000_0000) != 0) {
-                // deferred interrupt already set
-                ihlog.tracef("Interrupting thread \"%s\" (already deferred)", this);
+            oldVal = stateRef.get();
+            if (oldVal == STATE_INTERRUPT_PENDING || oldVal == STATE_INTERRUPT_IN_PROGRESS) {
+                // already set
+                ihlog.tracef("Interrupting thread \"%s\" (already interrupted)", this);
                 return;
+            } else if (oldVal == STATE_INTERRUPT_DEFERRED) {
+                newVal = STATE_INTERRUPT_PENDING;
+            } else {
+                newVal = STATE_INTERRUPT_IN_PROGRESS;
             }
-            if (oldVal == 0) {
-                synchronized (intCnt) {
-                    oldVal = intCnt.get();
-                    if (oldVal == 0) {
-                        doInterrupt();
-                        return;
-                    }
-                }
+        } while (! stateRef.compareAndSet(oldVal, newVal));
+        if (newVal == STATE_INTERRUPT_IN_PROGRESS) try {
+            doInterrupt();
+        } finally {
+            // after we return, the thread could be un-interrupted at any time without our knowledge
+            stateRef.set(STATE_MAYBE_INTERRUPTED);
+            if (differentThread) {
+                // unpark the thread if it was waiting to defer interrupts
+                // interrupting the thread will unpark it; it might park after the interrupt though, or wake up before the state is restored
+                LockSupport.unpark(this);
             }
-            assert oldVal != 0;
-        } while (! intCnt.compareAndSet(oldVal, oldVal | 0x8000_0000));
-        ihlog.tracef("Interrupting thread \"%s\" (deferred)", this);
+        } else {
+            ihlog.tracef("Interrupting thread \"%s\" (deferred)", this);
+        }
     }
 
     private void doInterrupt() {
-        assert Thread.holdsLock(intCnt);
         if (isInterrupted()) return;
         ihlog.tracef("Interrupting thread \"%s\"", this);
         try {
@@ -150,7 +195,7 @@ public class JBossThread extends Thread {
     }
 
     public boolean isInterrupted() {
-        return this == Thread.currentThread() ? super.isInterrupted() : super.isInterrupted() || (intCnt.get() & 0x8000_0000) != 0;
+        return this == Thread.currentThread() ? super.isInterrupted() : super.isInterrupted() || (stateRef.get() == STATE_INTERRUPT_PENDING);
     }
 
     /**
@@ -174,16 +219,13 @@ public class JBossThread extends Thread {
      */
     public static void executeWithInterruptDeferred(final DirectExecutor directExecutor, final Runnable task) {
         final JBossThread thread = currentThread();
-        if (thread == null) {
-            directExecutor.execute(task);
-            return;
-        }
-        boolean intr = registerDeferral(thread);
-        assert ! Thread.interrupted();
-        try {
+        if (registerDeferral(thread)) try {
             directExecutor.execute(task);
         } finally {
-            unregisterDeferral(intr, thread);
+            unregisterDeferral(thread);
+        } else {
+            // already deferred
+            directExecutor.execute(task);
         }
     }
 
@@ -199,15 +241,13 @@ public class JBossThread extends Thread {
      */
     public static <T> T executeWithInterruptDeferred(final Callable<T> action) throws Exception {
         final JBossThread thread = currentThread();
-        if (thread == null) {
-            return action.call();
-        }
-        boolean intr = registerDeferral(thread);
-        assert ! Thread.interrupted();
-        try {
+        if (registerDeferral(thread)) try {
             return action.call();
         } finally {
-            unregisterDeferral(intr, thread);
+            unregisterDeferral(thread);
+        } else {
+            // already deferred
+            return action.call();
         }
     }
 
@@ -222,15 +262,13 @@ public class JBossThread extends Thread {
      */
     public static <T> T executeWithInterruptDeferred(final PrivilegedAction<T> action) {
         final JBossThread thread = currentThread();
-        if (thread == null) {
-            return action.run();
-        }
-        boolean intr = registerDeferral(thread);
-        assert ! Thread.interrupted();
-        try {
+        if (registerDeferral(thread)) try {
             return action.run();
         } finally {
-            unregisterDeferral(intr, thread);
+            unregisterDeferral(thread);
+        } else {
+            // already deferred
+            return action.run();
         }
     }
 
@@ -246,69 +284,198 @@ public class JBossThread extends Thread {
      */
     public static <T> T executeWithInterruptDeferred(final PrivilegedExceptionAction<T> action) throws Exception {
         final JBossThread thread = currentThread();
-        if (thread == null) {
-            return action.run();
-        }
-        boolean intr = registerDeferral(thread);
-        assert ! Thread.interrupted();
-        try {
+        if (registerDeferral(thread)) try {
             return action.run();
         } finally {
-            unregisterDeferral(intr, thread);
+            unregisterDeferral(thread);
+        } else {
+            // already deferred
+            return action.run();
         }
     }
 
-    private static void unregisterDeferral(final boolean intr, final JBossThread thread) {
-        int oldVal;
-        final AtomicInteger intCnt = thread.intCnt;
+    public static <T, U, R, E extends Exception> R applyInterruptDeferredEx(final ExceptionBiFunction<T, U, R, E> function, T param1, U param2) throws E {
+        final JBossThread thread = currentThread();
+        if (registerDeferral(thread)) try {
+            return function.apply(param1, param2);
+        } finally {
+            unregisterDeferral(thread);
+        } else {
+            // already deferred
+            return function.apply(param1, param2);
+        }
+    }
+
+    public static <T, R, E extends Exception> R applyInterruptDeferredEx(final ExceptionFunction<T, R, E> function, T param) throws E {
+        return applyInterruptDeferredEx(ExceptionFunction::apply, function, param);
+    }
+
+    public static <T, E extends Exception> T getInterruptDeferredEx(final ExceptionSupplier<T, E> supplier) throws E {
+        return applyInterruptDeferredEx(ExceptionSupplier::get, supplier);
+    }
+
+    public static <T, E extends Exception> void acceptInterruptDeferredEx(final ExceptionObjLongConsumer<T, E> consumer, T param1, long param2) throws E {
+        final JBossThread thread = currentThread();
+        if (registerDeferral(thread)) try {
+            consumer.accept(param1, param2);
+        } finally {
+            unregisterDeferral(thread);
+        } else {
+            // already deferred
+            consumer.accept(param1, param2);
+        }
+    }
+
+    public static <T, E extends Exception> void acceptInterruptDeferredEx(final ExceptionObjIntConsumer<T, E> consumer, T param1, int param2) throws E {
+        final JBossThread thread = currentThread();
+        if (registerDeferral(thread)) try {
+            consumer.accept(param1, param2);
+        } finally {
+            unregisterDeferral(thread);
+        } else {
+            // already deferred
+            consumer.accept(param1, param2);
+        }
+    }
+
+    public static <T, U, E extends Exception> void acceptInterruptDeferredEx(final ExceptionBiConsumer<T, U, E> consumer, T param1, U param2) throws E {
+        final JBossThread thread = currentThread();
+        if (registerDeferral(thread)) try {
+            consumer.accept(param1, param2);
+        } finally {
+            unregisterDeferral(thread);
+        } else {
+            // already deferred
+            consumer.accept(param1, param2);
+        }
+    }
+
+    public static <T, E extends Exception> void acceptInterruptDeferredEx(final ExceptionConsumer<T, E> consumer, T param) throws E {
+        acceptInterruptDeferredEx(ExceptionConsumer::accept, consumer, param);
+    }
+
+    public static <E extends Exception> void runInterruptDeferredEx(final ExceptionRunnable<E> runnable) throws E {
+        acceptInterruptDeferredEx((ExceptionConsumer<ExceptionRunnable<E>, E>) ExceptionRunnable::run, runnable);
+    }
+
+
+    public static <T, U, R, E extends Exception> R applyInterruptResumedEx(final ExceptionBiFunction<T, U, R, E> function, T param1, U param2) throws E {
+        final JBossThread thread = currentThread();
+        if (unregisterDeferral(thread)) try {
+            return function.apply(param1, param2);
+        } finally {
+            registerDeferral(thread);
+        } else {
+            // already resumed
+            return function.apply(param1, param2);
+        }
+    }
+
+    public static <T, R, E extends Exception> R applyInterruptResumedEx(final ExceptionFunction<T, R, E> function, T param) throws E {
+        return applyInterruptResumedEx(ExceptionFunction::apply, function, param);
+    }
+
+    public static <T, E extends Exception> T getInterruptResumedEx(final ExceptionSupplier<T, E> supplier) throws E {
+        return applyInterruptResumedEx(ExceptionSupplier::get, supplier);
+    }
+
+    public static <T, E extends Exception> void acceptInterruptResumedEx(final ExceptionObjLongConsumer<T, E> consumer, T param1, long param2) throws E {
+        final JBossThread thread = currentThread();
+        if (unregisterDeferral(thread)) try {
+            consumer.accept(param1, param2);
+        } finally {
+            registerDeferral(thread);
+        } else {
+            // already resumed
+            consumer.accept(param1, param2);
+        }
+    }
+
+    public static <T, E extends Exception> void acceptInterruptResumedEx(final ExceptionObjIntConsumer<T, E> consumer, T param1, int param2) throws E {
+        final JBossThread thread = currentThread();
+        if (unregisterDeferral(thread)) try {
+            consumer.accept(param1, param2);
+        } finally {
+            registerDeferral(thread);
+        } else {
+            // already resumed
+            consumer.accept(param1, param2);
+        }
+    }
+
+    public static <T, U, E extends Exception> void acceptInterruptResumedEx(final ExceptionBiConsumer<T, U, E> consumer, T param1, U param2) throws E {
+        final JBossThread thread = currentThread();
+        if (unregisterDeferral(thread)) try {
+            consumer.accept(param1, param2);
+        } finally {
+            registerDeferral(thread);
+        } else {
+            // already resumed
+            consumer.accept(param1, param2);
+        }
+    }
+
+    public static <T, E extends Exception> void acceptInterruptResumedEx(final ExceptionConsumer<T, E> consumer, T param) throws E {
+        acceptInterruptResumedEx(ExceptionConsumer::accept, consumer, param);
+    }
+
+    public static <E extends Exception> void runInterruptResumedEx(final ExceptionRunnable<E> runnable) throws E {
+        acceptInterruptResumedEx((ExceptionConsumer<ExceptionRunnable<E>, E>) ExceptionRunnable::run, runnable);
+    }
+
+    private static boolean unregisterDeferral(final JBossThread thread) {
+        if (thread == null) {
+            return false;
+        }
+        int oldVal, newVal;
+        final AtomicInteger stateRef = thread.stateRef;
         do {
-            oldVal = intCnt.get();
-            if ((oldVal & 0x7fff_ffff) == 1) {
-                synchronized (intCnt) {
-                    oldVal = intCnt.get();
-                    if (oldVal == 1) {
-                        intCnt.set(0);
-                        if (intr) {
-                            thread.doInterrupt();
-                            break;
-                        }
-                        // no interrupt occurred during the operation
-                        break;
-                    } else if (oldVal == 0x8000_0001) {
-                        intCnt.set(0);
-                        // deferral complete
-                        thread.doInterrupt();
-                        break;
-                    }
-                }
+            oldVal = stateRef.get();
+            if (oldVal == STATE_MAYBE_INTERRUPTED || oldVal == STATE_INTERRUPT_IN_PROGRESS) {
+                // already not deferred
+                return false;
+            } else if (oldVal == STATE_INTERRUPT_DEFERRED) {
+                newVal = STATE_MAYBE_INTERRUPTED;
+            } else if (oldVal == STATE_INTERRUPT_PENDING) {
+                newVal = STATE_INTERRUPT_IN_PROGRESS;
+            } else {
+                throw Assert.unreachableCode();
             }
-            assert (oldVal & 0x7fff_ffff) > 1;
-        } while (! intCnt.compareAndSet(oldVal, oldVal - 1));
+        } while (! stateRef.compareAndSet(oldVal, newVal));
+        if (newVal == STATE_INTERRUPT_IN_PROGRESS) try {
+            thread.doInterrupt();
+        } finally {
+            stateRef.set(STATE_MAYBE_INTERRUPTED);
+        }
+        return true;
     }
 
     private static boolean registerDeferral(final JBossThread thread) {
-        boolean intr = false;
-        final AtomicInteger intCnt = thread.intCnt;
-        int oldVal;
+        if (thread == null) {
+            return false;
+        }
+        final AtomicInteger stateRef = thread.stateRef;
+        int oldVal, newVal;
         do {
-            oldVal = intCnt.get();
-            if (oldVal == 0) {
-                synchronized (intCnt) {
-                    oldVal = intCnt.get();
-                    if (oldVal == 0) {
-                        intCnt.set(1);
-                        intr = Thread.interrupted();
-                        break;
-                    }
-                }
+            oldVal = stateRef.get();
+            while (oldVal == STATE_INTERRUPT_IN_PROGRESS) {
+                LockSupport.park();
+                oldVal = stateRef.get();
             }
-            if (oldVal == 0x7fff_ffff) {
-                // extremely unlikely
-                throw new IllegalStateException();
+            if (oldVal == STATE_MAYBE_INTERRUPTED) {
+                newVal = Thread.interrupted() ? STATE_INTERRUPT_DEFERRED : STATE_INTERRUPT_PENDING;
+            } else if (oldVal == STATE_INTERRUPT_DEFERRED || oldVal == STATE_INTERRUPT_PENDING) {
+                // already deferred
+                return false;
+            } else {
+                throw Assert.unreachableCode();
             }
-            assert (oldVal & 0x7fff_ffff) > 0;
-        } while (! intCnt.compareAndSet(oldVal, oldVal + 1));
-        return intr;
+        } while (! stateRef.compareAndSet(oldVal, newVal));
+        if (newVal == STATE_INTERRUPT_DEFERRED && Thread.interrupted()) {
+            // in case we got interrupted right after we checked interrupt state but before we CAS'd the value.
+            stateRef.set(STATE_INTERRUPT_PENDING);
+        }
+        return true;
     }
 
     /**
@@ -378,6 +545,88 @@ public class JBossThread extends Thread {
         } finally {
             thread.interruptHandler = newInterruptHandler;
         }
+    }
+
+    public static <T, U, R, E extends Exception> R applyWithInterruptHandler(InterruptHandler interruptHandler, ExceptionBiFunction<T, U, R, E> function, T param1, U param2) throws E {
+        final JBossThread thread = currentThread();
+        if (thread == null) {
+            return function.apply(param1, param2);
+        } else {
+            final InterruptHandler old = thread.interruptHandler;
+            thread.interruptHandler = interruptHandler;
+            try {
+                return function.apply(param1, param2);
+            } finally {
+                thread.interruptHandler = old;
+            }
+        }
+    }
+
+    public static <T, R, E extends Exception> R applyWithInterruptHandler(InterruptHandler interruptHandler, ExceptionFunction<T, R, E> function, T param1) throws E {
+        return applyWithInterruptHandler(interruptHandler, ExceptionFunction::apply, function, param1);
+    }
+
+    public static <R, E extends Exception> R getWithInterruptHandler(InterruptHandler interruptHandler, ExceptionSupplier<R, E> function) throws E {
+        return applyWithInterruptHandler(interruptHandler, ExceptionSupplier::get, function);
+    }
+
+    public static <T, E extends Exception> void acceptWithInterruptHandler(InterruptHandler interruptHandler, ExceptionObjLongConsumer<T, E> function, T param1, long param2) throws E {
+        final JBossThread thread = currentThread();
+        if (thread == null) {
+            function.accept(param1, param2);
+            return;
+        } else {
+            final InterruptHandler old = thread.interruptHandler;
+            thread.interruptHandler = interruptHandler;
+            try {
+                function.accept(param1, param2);
+                return;
+            } finally {
+                thread.interruptHandler = old;
+            }
+        }
+    }
+
+    public static <T, E extends Exception> void acceptWithInterruptHandler(InterruptHandler interruptHandler, ExceptionObjIntConsumer<T, E> function, T param1, int param2) throws E {
+        final JBossThread thread = currentThread();
+        if (thread == null) {
+            function.accept(param1, param2);
+            return;
+        } else {
+            final InterruptHandler old = thread.interruptHandler;
+            thread.interruptHandler = interruptHandler;
+            try {
+                function.accept(param1, param2);
+                return;
+            } finally {
+                thread.interruptHandler = old;
+            }
+        }
+    }
+
+    public static <T, U, E extends Exception> void acceptWithInterruptHandler(InterruptHandler interruptHandler, ExceptionBiConsumer<T, U, E> function, T param1, U param2) throws E {
+        final JBossThread thread = currentThread();
+        if (thread == null) {
+            function.accept(param1, param2);
+            return;
+        } else {
+            final InterruptHandler old = thread.interruptHandler;
+            thread.interruptHandler = interruptHandler;
+            try {
+                function.accept(param1, param2);
+                return;
+            } finally {
+                thread.interruptHandler = old;
+            }
+        }
+    }
+
+    public static <T, E extends Exception> void acceptWithInterruptHandler(InterruptHandler interruptHandler, ExceptionConsumer<T, E> function, T param1) throws E {
+        acceptWithInterruptHandler(interruptHandler, ExceptionConsumer::accept, function, param1);
+    }
+
+    public static <E extends Exception> void runWithInterruptHandler(InterruptHandler interruptHandler, ExceptionRunnable<E> function) throws E {
+        acceptWithInterruptHandler(interruptHandler, ExceptionRunnable::run, function);
     }
 
     /**

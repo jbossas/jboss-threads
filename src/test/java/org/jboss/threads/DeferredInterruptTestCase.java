@@ -41,6 +41,7 @@ public class DeferredInterruptTestCase extends TestCase {
         final CountDownLatch latch2 = new CountDownLatch(1);
         final JBossThread thread = new JBossThread(new Runnable() {
             public void run() {
+                Thread.interrupted();
                 latch1.countDown();
                 LockSupport.parkNanos(3000000000L);
                 delivered0.set(Thread.interrupted());
