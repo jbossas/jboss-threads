@@ -73,6 +73,10 @@ public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolE
         return rejectCount.get();
     }
 
+   public long getNumberOfFreeThreads() {
+      return getMaximumPoolSize() - getActiveCount();
+   }
+
     public int getCurrentThreadCount() {
         return getActiveCount();
     }

@@ -149,6 +149,11 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         }
     }
 
+    @Override
+    public long getNumberOfFreeThreads() {
+        return getMaxThreads() - getCurrentThreadCount();
+    }
+
     public int getCurrentThreadCount() {
         final Lock lock = this.lock;
         lock.lock();

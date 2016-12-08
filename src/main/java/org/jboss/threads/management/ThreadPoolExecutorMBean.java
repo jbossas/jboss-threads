@@ -33,4 +33,7 @@ public interface ThreadPoolExecutorMBean extends ThreadExecutorMBean {
     long getKeepAliveTime();
 
     void setKeepAliveTime(long milliseconds);
+
+    long getNumberOfFreeThreads();
+
 }
