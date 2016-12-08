@@ -283,6 +283,11 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
         }
     }
 
+    @Override
+    public long getNumberOfFreeThreads() {
+        return 0L;
+    }
+
     public boolean isShutdown() {
         // container managed executors are never shut down from the application's perspective
         return false;

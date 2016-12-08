@@ -614,6 +614,11 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         setKeepAliveTime(milliseconds, TimeUnit.MILLISECONDS);
     }
 
+    @Override
+    public long getNumberOfFreeThreads() {
+        return getMaxThreads() - getCurrentThreadCount();
+    }
+
     /**
      * Determine whether this thread pool executor is set to block when a task cannot be accepted immediately.
      *

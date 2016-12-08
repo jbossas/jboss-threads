@@ -84,4 +84,6 @@ public interface BlockingExecutor extends Executor {
      * @throws NullPointerException if command is {@code null}
      */
     void executeNonBlocking(Runnable task) throws RejectedExecutionException;
+
+    long getNumberOfFreeThreads();
 }
