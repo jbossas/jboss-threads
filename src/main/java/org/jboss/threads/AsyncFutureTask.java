@@ -206,7 +206,7 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
                 if (remaining <= 0L || status != Status.WAITING) {
                     return status;
                 }
-                wait(remaining / 1000000L, (int) (remaining % 100000));
+                wait(remaining / 1_000_000L, (int) (remaining % 1_000_000));
                 remaining -= -now + (now = System.nanoTime());
             }
         }
@@ -245,7 +245,7 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
                         return status;
                     }
                     try {
-                        wait(remaining / 1000000L, (int) (remaining % 100000));
+                        wait(remaining / 1_000_000L, (int) (remaining % 1_000_000));
                     } catch (InterruptedException e) {
                         intr = true;
                     }
