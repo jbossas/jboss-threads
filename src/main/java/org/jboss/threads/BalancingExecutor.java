@@ -36,15 +36,12 @@ import static java.util.concurrent.atomic.AtomicReferenceFieldUpdater.newUpdater
  */
 public class BalancingExecutor implements Executor {
 
+    private static final Executor[] NO_EXECUTORS = new Executor[0];
     private volatile Executor[] executors = null;
     private final AtomicInteger seq = new AtomicInteger();
     private final Lock writeLock = new ReentrantLock();
 
-    private static final AtomicArray<BalancingExecutor, Executor> executorsUpdater = AtomicArray.create(newUpdater(BalancingExecutor.class, Executor[].class, "executors"), new AtomicArray.Creator<Executor>() {
-        public Executor[] create(final int len) {
-            return new Executor[len];
-        }
-    });
+    private static final AtomicArray<BalancingExecutor, Executor> executorsUpdater = AtomicArray.create(newUpdater(BalancingExecutor.class, Executor[].class, "executors"), NO_EXECUTORS);
 
     /**
      * Construct a new instance.

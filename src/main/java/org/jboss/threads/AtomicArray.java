@@ -27,6 +27,8 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
+import org.wildfly.common.Assert;
+
 /**
  * Utility for snapshot/copy-on-write arrays.  To use these methods, two things are required: an immutable array
  * stored on a volatile field, and an instance of
@@ -40,24 +42,17 @@ import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
  */
 public final class AtomicArray<T, V> {
 
+    @SuppressWarnings("AtomicFieldUpdaterNotStaticFinal")
     private final AtomicReferenceFieldUpdater<T, V[]> updater;
     private final V[] emptyArray;
-    private final Creator<V> creator;
 
-    /**
-     * Construct an instance.
-     *
-     * @param updater the field updater
-     * @param creator the array creator
-     */
-    private AtomicArray(AtomicReferenceFieldUpdater<T, V[]> updater, Creator<V> creator) {
+    private AtomicArray(AtomicReferenceFieldUpdater<T, V[]> updater, V[] emptyArray) {
         this.updater = updater;
-        this.creator = creator;
-        emptyArray = creator.create(0);
+        this.emptyArray = emptyArray;
     }
 
     /**
-     * Convenience method to create an instance.
+     * Construct a new instance.
      *
      * @param updater the field updater
      * @param componentType the component class
@@ -66,20 +61,44 @@ public final class AtomicArray<T, V> {
      * @return the new instance
      */
     public static <T, V> AtomicArray<T, V> create(AtomicReferenceFieldUpdater<T, V[]> updater, Class<V> componentType) {
-        return new AtomicArray<T,V>(updater, new ReflectCreator<V>(componentType));
+        Assert.checkNotNullParam("updater", updater);
+        Assert.checkNotNullParam("componentType", componentType);
+        return new AtomicArray<>(updater, (V[]) Array.newInstance(componentType, 0));
     }
 
     /**
-     * Convenience method to create an instance.
+     * Construct a new instance.
      *
      * @param updater the field updater
      * @param creator the array creator
      * @param <T> the type which contains the target field
      * @param <V> the array value type
      * @return the new instance
+     * @deprecated Use {@link #create(AtomicReferenceFieldUpdater, Object[])} or {@link #create(AtomicReferenceFieldUpdater, Class)} instead.
      */
+    @Deprecated
     public static <T, V> AtomicArray<T, V> create(AtomicReferenceFieldUpdater<T, V[]> updater, Creator<V> creator) {
-        return new AtomicArray<T,V>(updater, creator);
+        Assert.checkNotNullParam("updater", updater);
+        Assert.checkNotNullParam("creator", creator);
+        return new AtomicArray<>(updater, creator.create(0));
+    }
+
+    /**
+     * Construct a new instance.
+     *
+     * @param updater the field updater
+     * @param emptyArray an empty array of the target type
+     * @param <T> the type which contains the target field
+     * @param <V> the array value type
+     * @return the new instance
+     */
+    public static <T, V> AtomicArray<T, V> create(AtomicReferenceFieldUpdater<T, V[]> updater, V[] emptyArray) {
+        Assert.checkNotNullParam("updater", updater);
+        Assert.checkNotNullParam("emptyArray", emptyArray);
+        if (emptyArray.length > 0) {
+            throw new IllegalArgumentException("Empty array parameter is not empty");
+        }
+        return new AtomicArray<>(updater, emptyArray);
     }
 
     /**
@@ -111,13 +130,6 @@ public final class AtomicArray<T, V> {
         return updater.getAndSet(instance, value);
     }
 
-    @SuppressWarnings({ "unchecked" })
-    private static <V> V[] copyOf(final AtomicArray.Creator<V> creator, V[] old, int newLen) {
-        final V[] target = creator.create(newLen);
-        System.arraycopy(old, 0, target, 0, Math.min(old.length, newLen));
-        return target;
-    }
-
     /**
      * Atomically replace the array with a new array which is one element longer, and which includes the given value.
      *
@@ -129,7 +141,7 @@ public final class AtomicArray<T, V> {
         for (;;) {
             final V[] oldVal = updater.get(instance);
             final int oldLen = oldVal.length;
-            final V[] newVal = copyOf(creator, oldVal, oldLen + 1);
+            final V[] newVal = Arrays.copyOf(oldVal, oldLen + 1);
             newVal[oldLen] = value;
             if (updater.compareAndSet(instance, oldVal, newVal)) {
                 return;
@@ -164,7 +176,7 @@ public final class AtomicArray<T, V> {
                     }
                 }
             }
-            final V[] newVal = copyOf(creator, oldVal, oldLen + 1);
+            final V[] newVal = Arrays.copyOf(oldVal, oldLen + 1);
             newVal[oldLen] = value;
             if (updater.compareAndSet(instance, oldVal, newVal)) {
                 return true;
@@ -208,8 +220,7 @@ public final class AtomicArray<T, V> {
                 if (index == -1) {
                     return false;
                 }
-                final V[] newVal = creator.create(oldLen - 1);
-                System.arraycopy(oldVal, 0, newVal, 0, index);
+                final V[] newVal = Arrays.copyOf(oldVal, oldLen - 1);
                 System.arraycopy(oldVal, index + 1, newVal, index, oldLen - index - 1);
                 if (updater.compareAndSet(instance, oldVal, newVal)) {
                     return true;
@@ -260,7 +271,7 @@ public final class AtomicArray<T, V> {
                 if (newLen == 0) {
                     newVal = emptyArray;
                 } else {
-                    newVal = creator.create(newLen);
+                    newVal = Arrays.copyOf(emptyArray, newLen);
                     for (int i = 0, j = 0; i < oldLen; i ++) {
                         if (! removeSlots[i]) {
                             newVal[j++] = oldVal[i];
@@ -287,8 +298,7 @@ public final class AtomicArray<T, V> {
             final V[] oldVal = updater.get(instance);
             final int oldLen = oldVal.length;
             final int pos = insertionPoint(Arrays.binarySearch(oldVal, value, comparator));
-            final V[] newVal = creator.create(oldLen + 1);
-            System.arraycopy(oldVal, 0, newVal, 0, pos);
+            final V[] newVal = Arrays.copyOf(oldVal, oldLen + 1);
             newVal[pos] = value;
             System.arraycopy(oldVal, pos, newVal, pos + 1, oldLen - pos);
             if (updater.compareAndSet(instance, oldVal, newVal)) {
@@ -313,8 +323,7 @@ public final class AtomicArray<T, V> {
             if (pos < 0) {
                 return false;
             }
-            final V[] newVal = creator.create(oldLen + 1);
-            System.arraycopy(oldVal, 0, newVal, 0, pos);
+            final V[] newVal = Arrays.copyOf(oldVal, oldLen + 1);
             newVal[pos] = value;
             System.arraycopy(oldVal, pos, newVal, pos + 1, oldLen - pos);
             if (updater.compareAndSet(instance, oldVal, newVal)) {
@@ -343,8 +352,7 @@ public final class AtomicArray<T, V> {
                 if (pos < 0) {
                     return false;
                 }
-                final V[] newVal = creator.create(oldLen - 1);
-                System.arraycopy(oldVal, 0, newVal, 0, pos);
+                final V[] newVal = Arrays.copyOf(oldVal, oldLen - 1);
                 System.arraycopy(oldVal, pos + 1, newVal, pos, oldLen - pos - 1);
                 if (updater.compareAndSet(instance, oldVal, newVal)) {
                     return true;
@@ -378,28 +386,8 @@ public final class AtomicArray<T, V> {
         return searchResult > 0 ? searchResult : - (searchResult + 1);
     }
 
-    @SuppressWarnings({ "unchecked" })
-    private static <V> V[] newInstance(Class<V> componentType, int length) {
-        if (componentType == Object.class) {
-            return (V[]) new Object[length];
-        } else {
-            return (V[]) Array.newInstance(componentType, length);
-        }
-    }
-
+    @Deprecated
     public interface Creator<V> {
         V[] create(int len);
-    }
-
-    private static final class ReflectCreator<V> implements Creator<V> {
-        private final Class<V> type;
-
-        public ReflectCreator(final Class<V> type) {
-            this.type = type;
-        }
-
-        public V[] create(final int len) {
-            return newInstance(type, len);
-        }
     }
 }
