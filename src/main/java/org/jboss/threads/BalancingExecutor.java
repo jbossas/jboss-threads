@@ -22,24 +22,22 @@
 
 package org.jboss.threads;
 
+import static java.util.concurrent.atomic.AtomicReferenceFieldUpdater.newUpdater;
+
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.ThreadLocalRandom;
 
-import static java.util.concurrent.atomic.AtomicReferenceFieldUpdater.newUpdater;
+import org.wildfly.common.Assert;
 
 /**
  * A simple load-balancing executor.  If no delegate executors are defined, then tasks are rejected.  Executors are
- * chosen in a round-robin fashion.
+ * chosen in a random fashion.
  */
 public class BalancingExecutor implements Executor {
 
     private static final Executor[] NO_EXECUTORS = new Executor[0];
-    private volatile Executor[] executors = null;
-    private final AtomicInteger seq = new AtomicInteger();
-    private final Lock writeLock = new ReentrantLock();
+    private volatile Executor[] executors = NO_EXECUTORS;
 
     private static final AtomicArray<BalancingExecutor, Executor> executorsUpdater = AtomicArray.create(newUpdater(BalancingExecutor.class, Executor[].class, "executors"), NO_EXECUTORS);
 
@@ -47,7 +45,6 @@ public class BalancingExecutor implements Executor {
      * Construct a new instance.
      */
     public BalancingExecutor() {
-        executorsUpdater.clear(this);
     }
 
     /**
@@ -59,9 +56,7 @@ public class BalancingExecutor implements Executor {
         if (executors != null && executors.length > 0) {
             final Executor[] clone = executors.clone();
             for (int i = 0; i < clone.length; i++) {
-                if (clone[i] == null) {
-                    throw new NullPointerException("executor at index " + i + " is null");
-                }
+                Assert.checkNotNullArrayParam("executors", i, clone[i]);
             }
             executorsUpdater.set(this, clone);
         } else {
@@ -81,7 +76,7 @@ public class BalancingExecutor implements Executor {
         if (len == 0) {
             throw new RejectedExecutionException("No executors available to run task");
         }
-        executors[seq.getAndIncrement() % len].execute(command);
+        executors[ThreadLocalRandom.current().nextInt(len)].execute(command);
     }
 
     /**
@@ -97,15 +92,9 @@ public class BalancingExecutor implements Executor {
      * @param executor the executor to add
      */
     public void addExecutor(final Executor executor) {
-        if (executor == null) {
-            throw new NullPointerException("executor is null");
-        }
-        final Lock lock = writeLock;
-        lock.lock();
-        try {
+        Assert.checkNotNullParam("executor", executor);
+        synchronized (this) {
             executorsUpdater.add(this, executor);
-        } finally {
-            lock.unlock();
         }
     }
 
@@ -118,12 +107,8 @@ public class BalancingExecutor implements Executor {
         if (executor == null) {
             return;
         }
-        final Lock lock = writeLock;
-        lock.lock();
-        try {
+        synchronized (this) {
             executorsUpdater.remove(this, executor, true);
-        } finally {
-            lock.unlock();
         }
     }
 }
