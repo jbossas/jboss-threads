@@ -24,7 +24,7 @@ package org.jboss.threads;
 
 class SimpleDirectExecutor implements DirectExecutor {
 
-    static DirectExecutor INSTANCE = new SimpleDirectExecutor();
+    static final DirectExecutor INSTANCE = new SimpleDirectExecutor();
 
     private SimpleDirectExecutor() {
     }
