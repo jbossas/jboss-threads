@@ -32,7 +32,7 @@ import org.jboss.logging.Logger;
 /**
  * A JBoss thread.  Supports logging and extra operations.
  */
-public final class JBossThread extends Thread {
+public class JBossThread extends Thread {
     private static final Logger log = Logger.getLogger("org.jboss.threads");
     private static final Logger ihlog = Logger.getLogger("org.jboss.threads.interrupt-handler");
 
