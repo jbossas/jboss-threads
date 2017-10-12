@@ -41,7 +41,10 @@ import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 
 /**
  * An executor which uses a regular queue to hold tasks.  The executor may be tuned at runtime in many ways.
+ *
+ * @deprecated Use {@link EnhancedQueueExecutor} instead.
  */
+@Deprecated
 public final class QueueExecutor extends AbstractExecutorService implements BlockingExecutorService, BoundedQueueThreadPoolExecutorMBean, ShutdownListenable {
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
     private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();

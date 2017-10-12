@@ -42,7 +42,10 @@ import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
 /**
  * A queueless thread pool.  If one or more threads are waiting for work when a task is submitted, it will be used.
  * Otherwise, if fewer than the maximum threads are started, a new thread is created.
+ *
+ * @deprecated Use {@link EnhancedQueueExecutor} instead.
  */
+@Deprecated
 public final class QueuelessExecutor extends AbstractExecutorService implements BlockingExecutorService, BoundedThreadPoolExecutorMBean, ShutdownListenable {
 
     private static final Logger log = Logger.getLogger("org.jboss.threads.executor");

@@ -32,8 +32,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 
 /**
- *
+ * @deprecated Use {@link EnhancedQueueExecutor} instead.
  */
+@Deprecated
 public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements BlockingExecutorService, BoundedQueueThreadPoolExecutorMBean, ShutdownListenable {
 
     private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
