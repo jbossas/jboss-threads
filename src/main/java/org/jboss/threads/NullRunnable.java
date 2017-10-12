@@ -30,7 +30,7 @@ final class NullRunnable implements Runnable {
         return INSTANCE;
     }
 
-    private NullRunnable() {
+    NullRunnable() {
     }
 
     public void run() {
