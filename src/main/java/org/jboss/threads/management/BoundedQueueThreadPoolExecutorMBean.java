@@ -25,6 +25,7 @@ package org.jboss.threads.management;
 /**
  *
  */
+@Deprecated
 public interface BoundedQueueThreadPoolExecutorMBean extends BoundedThreadPoolExecutorMBean {
     boolean isAllowCoreThreadTimeout();
 

@@ -25,6 +25,7 @@ package org.jboss.threads.management;
 /**
  *
  */
+@Deprecated
 public interface ThreadPoolExecutorMBean extends ThreadExecutorMBean {
     int getMaxThreads();
 

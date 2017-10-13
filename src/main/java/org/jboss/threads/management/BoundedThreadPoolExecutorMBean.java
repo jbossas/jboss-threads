@@ -25,6 +25,7 @@ package org.jboss.threads.management;
 /**
  *
  */
+@Deprecated
 public interface BoundedThreadPoolExecutorMBean extends ThreadPoolExecutorMBean {
 
     boolean isBlocking();

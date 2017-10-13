@@ -44,6 +44,8 @@ import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.atomic.LongAdder;
 
+import org.jboss.threads.management.ManageableThreadPoolExecutorService;
+import org.jboss.threads.management.StandardThreadPoolMXBean;
 import org.wildfly.common.Assert;
 import org.wildfly.common.annotation.NotNull;
 import sun.misc.Contended;
@@ -61,7 +63,7 @@ import sun.misc.Contended;
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
 @Contended
-public final class EnhancedQueueExecutor extends AbstractExecutorService {
+public final class EnhancedQueueExecutor extends AbstractExecutorService implements ManageableThreadPoolExecutorService {
 
     /*
     ┌──────────────────────────┐
@@ -168,6 +170,10 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService {
      * The approximate set of pooled threads.
      */
     private final Set<Thread> runningThreads = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    /**
+     * The management bean instance.
+     */
+    private final MXBeanImpl mxBean;
 
     // =======================================================
     // Current state fields
@@ -321,6 +327,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService {
         threadStatus = withCoreSize(withMaxSize(withAllowCoreTimeout(0L, builder.allowsCoreThreadTimeOut()), maxSize), coreSize);
         timeoutNanos = max(1L, keepAliveTime);
         queueSize = withMaxQueueSize(withCurrentQueueSize(0L, 0), builder.getMaximumQueueSize());
+        mxBean = new MXBeanImpl();
     }
 
     // =======================================================
@@ -782,6 +789,14 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService {
     }
 
     // =======================================================
+    // Management
+    // =======================================================
+
+    public StandardThreadPoolMXBean getThreadPoolMXBean() {
+        return mxBean;
+    }
+
+    // =======================================================
     // Other public API
     // =======================================================
 
@@ -1109,6 +1124,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService {
     public void setMaximumQueueSize(final int maxQueueSize) {
         Assert.checkMinimumParameter("maxQueueSize", 0, maxQueueSize);
         Assert.checkMaximumParameter("maxQueueSize", Integer.MAX_VALUE, maxQueueSize);
+        if (NO_QUEUE_LIMIT) return;
         long oldVal;
         do {
             oldVal = queueSize;
@@ -1848,6 +1864,135 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService {
             super(null);
             this.completedTaskCounter = completedTaskCounter;
             this.task = task;
+        }
+    }
+
+    // =======================================================
+    // Management bean implementation
+    // =======================================================
+
+    final class MXBeanImpl implements StandardThreadPoolMXBean {
+        MXBeanImpl() {
+        }
+
+        public float getGrowthResistance() {
+            return EnhancedQueueExecutor.this.getGrowthResistance();
+        }
+
+        public void setGrowthResistance(final float value) {
+            EnhancedQueueExecutor.this.setGrowthResistance(value);
+        }
+
+        public boolean isGrowthResistanceSupported() {
+            return true;
+        }
+
+        public int getCorePoolSize() {
+            return EnhancedQueueExecutor.this.getCorePoolSize();
+        }
+
+        public void setCorePoolSize(final int corePoolSize) {
+            EnhancedQueueExecutor.this.setCorePoolSize(corePoolSize);
+        }
+
+        public boolean isCorePoolSizeSupported() {
+            return true;
+        }
+
+        public boolean prestartCoreThread() {
+            return EnhancedQueueExecutor.this.prestartCoreThread();
+        }
+
+        public int prestartAllCoreThreads() {
+            return EnhancedQueueExecutor.this.prestartAllCoreThreads();
+        }
+
+        public boolean isCoreThreadPrestartSupported() {
+            return true;
+        }
+
+        public int getMaximumPoolSize() {
+            return EnhancedQueueExecutor.this.getMaximumPoolSize();
+        }
+
+        public void setMaximumPoolSize(final int maxPoolSize) {
+            EnhancedQueueExecutor.this.setMaximumPoolSize(maxPoolSize);
+        }
+
+        public int getPoolSize() {
+            return EnhancedQueueExecutor.this.getPoolSize();
+        }
+
+        public int getLargestPoolSize() {
+            return EnhancedQueueExecutor.this.getLargestPoolSize();
+        }
+
+        public int getActiveCount() {
+            return EnhancedQueueExecutor.this.getActiveCount();
+        }
+
+        public boolean isAllowCoreThreadTimeOut() {
+            return EnhancedQueueExecutor.this.allowsCoreThreadTimeOut();
+        }
+
+        public void setAllowCoreThreadTimeOut(final boolean value) {
+            EnhancedQueueExecutor.this.allowCoreThreadTimeOut(value);
+        }
+
+        public long getKeepAliveTimeSeconds() {
+            return EnhancedQueueExecutor.this.getKeepAliveTime(TimeUnit.SECONDS);
+        }
+
+        public void setKeepAliveTimeSeconds(final long seconds) {
+            EnhancedQueueExecutor.this.setKeepAliveTime(seconds, TimeUnit.SECONDS);
+        }
+
+        public int getMaximumQueueSize() {
+            return EnhancedQueueExecutor.this.getMaximumQueueSize();
+        }
+
+        public void setMaximumQueueSize(final int size) {
+            EnhancedQueueExecutor.this.setMaximumQueueSize(size);
+        }
+
+        public int getQueueSize() {
+            return EnhancedQueueExecutor.this.getQueueSize();
+        }
+
+        public int getLargestQueueSize() {
+            return EnhancedQueueExecutor.this.getLargestQueueSize();
+        }
+
+        public boolean isQueueBounded() {
+            return ! NO_QUEUE_LIMIT;
+        }
+
+        public boolean isQueueSizeModifiable() {
+            return ! NO_QUEUE_LIMIT;
+        }
+
+        public boolean isShutdown() {
+            return EnhancedQueueExecutor.this.isShutdown();
+        }
+
+        public boolean isTerminating() {
+            return EnhancedQueueExecutor.this.isTerminating();
+        }
+
+        public boolean isTerminated() {
+            return EnhancedQueueExecutor.this.isTerminated();
+        }
+
+        public long getSubmittedTaskCount() {
+            return EnhancedQueueExecutor.this.getSubmittedTaskCount();
+        }
+
+        public long getRejectedTaskCount() {
+            return EnhancedQueueExecutor.this.getRejectedTaskCount();
+        }
+
+        public long getCompletedTaskCount() {
+            return EnhancedQueueExecutor.this.getCompletedTaskCount();
         }
     }
 }

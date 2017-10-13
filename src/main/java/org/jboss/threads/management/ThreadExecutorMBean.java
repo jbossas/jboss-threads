@@ -25,6 +25,7 @@ package org.jboss.threads.management;
 /**
  *
  */
+@Deprecated
 public interface ThreadExecutorMBean {
 
     int getRejectedCount();
