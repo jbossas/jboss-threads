@@ -77,6 +77,13 @@ public final class JBossThreadFactory implements ThreadFactory {
         this.creatingContext = AccessController.getContext();
     }
 
+    /**
+     * @deprecated Use {@link #JBossThreadFactory(ThreadGroup, Boolean, Integer, String, Thread.UncaughtExceptionHandler, Long)} instead.
+     */
+    public JBossThreadFactory(ThreadGroup threadGroup, final Boolean daemon, final Integer initialPriority, String namePattern, final Thread.UncaughtExceptionHandler uncaughtExceptionHandler, final Long stackSize, final AccessControlContext ignored) {
+        this(threadGroup, daemon, initialPriority, namePattern, uncaughtExceptionHandler, stackSize);
+    }
+
     public Thread newThread(final Runnable target) {
         final AccessControlContext context;
         if ((context = creatingContext) != null) {
