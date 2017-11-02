@@ -518,7 +518,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
          * Establish whether core threads are allowed to time out.  A "core thread" is defined as any thread in the pool
          * when the pool size is below the pool's {@linkplain #getCorePoolSize() core pool size}.
          *
-         * @param value {@code true} if core threads are allowed to time out, {@code false} otherwise
+         * @param allowCoreTimeOut {@code true} if core threads are allowed to time out, {@code false} otherwise
          * @return this builder
          * @see EnhancedQueueExecutor#allowCoreThreadTimeOut(boolean)
          */
@@ -976,7 +976,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * Set the core pool size.  If the configured maximum pool size is less than the configured core size, the
      * core size will be reduced to match the maximum size when the thread pool is constructed.
      *
-     * @param coreSize the core pool size (must be greater than or equal to 0, and less than 2^20)
+     * @param corePoolSize the core pool size (must be greater than or equal to 0, and less than 2^20)
      * @see Builder#setCorePoolSize(int) Builder.setCorePoolSize()
      */
     public void setCorePoolSize(final int corePoolSize) {
@@ -1014,7 +1014,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * Set the maximum pool size.  If the configured maximum pool size is less than the configured core size, the
      * core size will be reduced to match the maximum size when the thread pool is constructed.
      *
-     * @param maxSize the maximum pool size (must be greater than or equal to 0, and less than 2^20)
+     * @param maxPoolSize the maximum pool size (must be greater than or equal to 0, and less than 2^20)
      * @see Builder#setMaximumPoolSize(int) Builder.setMaximumPoolSize()
      */
     public void setMaximumPoolSize(final int maxPoolSize) {

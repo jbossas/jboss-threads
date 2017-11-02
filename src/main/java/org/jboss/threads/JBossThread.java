@@ -80,7 +80,7 @@ public class JBossThread extends Thread {
      * Construct a new instance.
      *
      * @param target the runnable target
-     * @see #Thread(Runnable)
+     * @see Thread#Thread(Runnable)
      */
     public JBossThread(final Runnable target) {
         super(target);
@@ -91,7 +91,7 @@ public class JBossThread extends Thread {
      *
      * @param target the runnable target
      * @param name the initial thread name
-     * @see #Thread(Runnable, String)
+     * @see Thread#Thread(Runnable, String)
      */
     public JBossThread(final Runnable target, final String name) {
         super(target, name);
@@ -102,7 +102,7 @@ public class JBossThread extends Thread {
      *
      * @param group the parent thread group
      * @param target the runnable target
-     * @see #Thread(ThreadGroup, Runnable)
+     * @see Thread#Thread(ThreadGroup, Runnable)
      * @throws SecurityException if the current thread cannot create a thread in the specified thread group
      */
     public JBossThread(final ThreadGroup group, final Runnable target) throws SecurityException {
@@ -115,7 +115,7 @@ public class JBossThread extends Thread {
      * @param group the parent thread group
      * @param target the runnable target
      * @param name the initial thread name
-     * @see #Thread(ThreadGroup,Runnable,String)
+     * @see Thread#Thread(ThreadGroup,Runnable,String)
      * @throws SecurityException if the current thread cannot create a thread in the specified thread group
      */
     public JBossThread(final ThreadGroup group, final Runnable target, final String name) throws SecurityException {
@@ -128,7 +128,7 @@ public class JBossThread extends Thread {
      * @param group the parent thread group
      * @param target the runnable target
      * @param name the initial thread name
-     * @see #Thread(ThreadGroup,Runnable,String,long)
+     * @see Thread#Thread(ThreadGroup,Runnable,String,long)
      * @throws SecurityException if the current thread cannot create a thread in the specified thread group
      */
     public JBossThread(final ThreadGroup group, final Runnable target, final String name, final long stackSize) throws SecurityException {
@@ -232,7 +232,7 @@ public class JBossThread extends Thread {
      *
      * @param action the task to run
      * @param <T> the callable's return type
-     * @param T the value returned from the callable
+     * @return the value returned from the callable
      * @throws Exception if the action throws an exception
      */
     public static <T> T executeWithInterruptDeferred(final Callable<T> action) throws Exception {
@@ -254,7 +254,7 @@ public class JBossThread extends Thread {
      *
      * @param action the task to run
      * @param <T> the action's return type
-     * @param T the value returned from the callable
+     * @return the value returned from the callable
      */
     public static <T> T executeWithInterruptDeferred(final PrivilegedAction<T> action) {
         final JBossThread thread = currentThread();
@@ -275,7 +275,7 @@ public class JBossThread extends Thread {
      *
      * @param action the task to run
      * @param <T> the action's return type
-     * @param T the value returned from the callable
+     * @return the value returned from the callable
      * @throws Exception if the action throws an exception
      */
     public static <T> T executeWithInterruptDeferred(final PrivilegedExceptionAction<T> action) throws Exception {

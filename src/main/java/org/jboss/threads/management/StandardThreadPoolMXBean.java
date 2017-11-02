@@ -58,7 +58,7 @@ public interface StandardThreadPoolMXBean {
      * core size will be reduced to match the maximum size when the thread pool is constructed.  If the thread pool
      * does not support a separate core pool size, this setting will be ignored.
      *
-     * @param coreSize the core pool size (must be greater than or equal to 0)
+     * @param corePoolSize the core pool size (must be greater than or equal to 0)
      */
     void setCorePoolSize(int corePoolSize);
 
@@ -103,7 +103,7 @@ public interface StandardThreadPoolMXBean {
      * Set the maximum pool size.  If the configured maximum pool size is less than the configured core size, the
      * core size will be reduced to match the maximum size when the thread pool is constructed.
      *
-     * @param maxSize the maximum pool size (must be greater than or equal to 0)
+     * @param maxPoolSize the maximum pool size (must be greater than or equal to 0)
      */
     void setMaximumPoolSize(final int maxPoolSize);
 
