@@ -34,6 +34,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.jboss.logging.Logger;
 import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
+import org.wildfly.common.Assert;
 
 /**
  * A queueless thread pool.  If one or more threads are waiting for work when a task is submitted, it will be used.
@@ -116,9 +117,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     }
 
     public void setMaxThreads(final int newSize) {
-        if (newSize < 1) {
-            throw new IllegalArgumentException("Pool size must be at least 1");
-        }
+        Assert.checkMinimumParameter("newSize", 1, newSize);
         final Lock lock = this.lock;
         lock.lock();
         try {
@@ -293,9 +292,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     }
 
     public void execute(final Runnable task) {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         final Executor executor;
         final Set<Thread> runningThreads = this.runningThreads;
         final Condition runnableDequeued = this.runnableDequeued;
@@ -377,9 +374,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     }
 
     public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         final Set<Thread> runningThreads = this.runningThreads;
         final Condition runnableDequeued = this.runnableDequeued;
         final Lock lock = this.lock;
@@ -440,9 +435,8 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     }
 
     public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
+        Assert.checkNotNullParam("unit", unit);
         long now = System.currentTimeMillis();
         final long deadline = now + unit.toMillis(timeout);
         if (deadline < 0L) {
@@ -514,9 +508,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
     }
 
     public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         final Executor executor;
         final Set<Thread> runningThreads = this.runningThreads;
         final Lock lock = this.lock;

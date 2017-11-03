@@ -23,6 +23,8 @@ import java.util.LinkedHashSet;
 import java.util.Arrays;
 import java.util.concurrent.Executor;
 
+import org.wildfly.common.Assert;
+
 /**
  * A builder for a dependency task.
  */
@@ -43,9 +45,7 @@ public final class DependencyTaskBuilder {
      * @return this builder
      */
     public DependencyTaskBuilder add(Dependency dependency) {
-        if (dependency == null) {
-            throw new NullPointerException("dependency is null");
-        }
+        Assert.checkNotNullParam("dependency", dependency);
         dependencies.add(dependency);
         return this;
     }

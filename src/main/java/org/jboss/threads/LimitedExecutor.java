@@ -22,6 +22,8 @@ import java.util.ArrayDeque;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
+import org.wildfly.common.Assert;
+
 /**
  * An executor for long-running tasks which limits the total concurrency over a delegate thread pool.
  *
@@ -45,9 +47,7 @@ public class LimitedExecutor implements Executor {
     }
 
     public void execute(final Runnable command) throws RejectedExecutionException {
-        if (command == null) {
-            throw new IllegalArgumentException("command is null");
-        }
+        Assert.checkNotNullParam("command", command);
         runner.add(command);
     }
 

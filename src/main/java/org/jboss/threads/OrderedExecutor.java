@@ -29,6 +29,8 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.Condition;
 
+import org.wildfly.common.Assert;
+
 /**
  * An executor that always runs all tasks in queue order, using a delegate executor to run the tasks.
  * <p/>
@@ -100,12 +102,8 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
      * @param handoffExecutor the executor to hand tasks to if the queue is full
      */
     public OrderedExecutor(final Executor parent, final Queue<Runnable> queue, final boolean blocking, final Executor handoffExecutor) {
-        if (parent == null) {
-            throw new NullPointerException("parent is null");
-        }
-        if (queue == null) {
-            throw new NullPointerException("queue is null");
-        }
+        Assert.checkNotNullParam("parent", parent);
+        Assert.checkNotNullParam("queue", queue);
         this.queue = queue;
         this.parent = parent;
         this.blocking = blocking;
@@ -130,9 +128,7 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
      * @param task the task to run.
      */
     public void execute(Runnable task) {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         Executor executor;
         OUT: for (;;) {
             lock.lock();
@@ -174,9 +170,7 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
     }
 
     public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         OUT: for (;;) {
             lock.lock();
             try {
@@ -204,9 +198,7 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
     }
 
     public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         long now = System.currentTimeMillis();
         final long deadline = now + unit.toMillis(timeout);
         if (deadline < 0L) {
@@ -246,9 +238,7 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
     }
 
     public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         Executor executor;
         OUT: for (;;) {
             lock.lock();

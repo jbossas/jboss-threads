@@ -34,6 +34,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.jboss.logging.Logger;
 import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
+import org.wildfly.common.Assert;
 
 /**
  * An executor which uses a regular queue to hold tasks.  The executor may be tuned at runtime in many ways.
@@ -87,15 +88,9 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
      * @param taskExecutor the executor to use to execute tasks
      */
     public QueueExecutor(final int coreThreads, final int maxThreads, final long keepAliveTime, final TimeUnit keepAliveTimeUnit, final Queue<Runnable> queue, final ThreadFactory threadFactory, final boolean blocking, final Executor handoffExecutor, final DirectExecutor taskExecutor) {
-        if (threadFactory == null) {
-            throw new NullPointerException("threadFactory is null");
-        }
-        if (queue == null) {
-            throw new NullPointerException("queue is null");
-        }
-        if (keepAliveTimeUnit == null) {
-            throw new NullPointerException("keepAliveTimeUnit is null");
-        }
+        Assert.checkNotNullParam("threadFactory", threadFactory);
+        Assert.checkNotNullParam("queue", queue);
+        Assert.checkNotNullParam("keepAliveTimeUnit", keepAliveTimeUnit);
         final Lock lock = this.lock;
         lock.lock();
         try {
@@ -155,9 +150,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
      * @throws ExecutionInterruptedException when blocking is enabled and the current thread is interrupted before a task could be accepted
      */
     public void execute(final Runnable task) throws RejectedExecutionException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         final Executor executor;
         final Lock lock = this.lock;
         lock.lock();
@@ -222,9 +215,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
      * @throws NullPointerException if command is {@code null}
      */
     public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         final Lock lock = this.lock;
         lock.lock();
         try {
@@ -273,9 +264,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
      * @throws NullPointerException if command is {@code null}
      */
     public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         long now = System.currentTimeMillis();
         final long deadline = now + unit.toMillis(timeout);
         if (deadline < 0L) {
@@ -331,9 +320,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
      * @throws NullPointerException if command is {@code null}
      */
     public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         final Executor executor;
         final Lock lock = this.lock;
         lock.lock();
@@ -593,12 +580,8 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
      * @param keepAliveTimeUnit the unit of time
      */
     public void setKeepAliveTime(final long keepAliveTime, final TimeUnit keepAliveTimeUnit) {
-        if (keepAliveTimeUnit == null) {
-            throw new NullPointerException("keepAliveTimeUnit is null");
-        }
-        if (keepAliveTime < 0L) {
-            throw new IllegalArgumentException("keepAliveTime is less than zero");
-        }
+        Assert.checkNotNullParam("keepAliveTimeUnit", keepAliveTimeUnit);
+        Assert.checkMinimumParameter("keepAliveTime", 0L, keepAliveTime);
         final Lock lock = this.lock;
         lock.lock();
         try {

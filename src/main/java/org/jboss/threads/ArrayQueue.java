@@ -25,6 +25,8 @@ import java.util.Queue;
 import java.util.Arrays;
 import java.util.ConcurrentModificationException;
 
+import org.wildfly.common.Assert;
+
 /**
  * A simple array-backed queue with a fixed size.
  */
@@ -92,9 +94,7 @@ public final class ArrayQueue<E> extends AbstractQueue<E> implements Queue<E> {
     }
 
     public boolean offer(final E e) {
-        if (e == null) {
-            throw new NullPointerException("e is null");
-        }
+        Assert.checkNotNullParam("e", e);
         final int head = this.head;
         final E[] elements = this.elements;
         final int len = elements.length;

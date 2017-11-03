@@ -24,6 +24,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
+import org.wildfly.common.Assert;
 
 @Deprecated
 class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecutorMBean {
@@ -54,9 +55,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
     }
 
     public void setMaxThreads(final int maxThreads) {
-        if (maxThreads < 0) {
-            throw new IllegalArgumentException("Max threads must not be negative");
-        }
+        Assert.checkMinimumParameter("maxThreads", 0, maxThreads);
         synchronized (lock) {
             final int old = this.maxThreads;
             final int diff = old - maxThreads;
@@ -72,9 +71,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
     }
 
     public void execute(final Runnable task) {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         try {
             final Semaphore semaphore = limitSemaphore;
             if (blocking) {
@@ -124,9 +121,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
     }
 
     public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         try {
             final Semaphore semaphore = limitSemaphore;
             semaphore.acquire();
@@ -165,9 +160,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
     }
 
     public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         try {
             final Semaphore semaphore = limitSemaphore;
             if (! semaphore.tryAcquire(timeout, unit)) {
@@ -208,9 +201,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
     }
 
     public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
-        if (task == null) {
-            throw new NullPointerException("task is null");
-        }
+        Assert.checkNotNullParam("task", task);
         try {
             final Semaphore semaphore = limitSemaphore;
             if (! semaphore.tryAcquire()) {
