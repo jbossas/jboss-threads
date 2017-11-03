@@ -232,12 +232,12 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     /**
      * The handler for tasks which cannot be accepted by the executor.
      */
-    volatile Executor handoffExecutor = DEFAULT_HANDLER;
+    volatile Executor handoffExecutor;
 
     /**
      * The handler for uncaught exceptions which occur during user tasks.
      */
-    volatile Thread.UncaughtExceptionHandler exceptionHandler = JBossExecutors.loggingExceptionHandler();
+    volatile Thread.UncaughtExceptionHandler exceptionHandler;
 
     // =======================================================
     // Statistics fields and counters
@@ -313,6 +313,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     EnhancedQueueExecutor(final Builder builder) {
         int maxSize = builder.getMaximumPoolSize();
         int coreSize = Math.min(builder.getCorePoolSize(), maxSize);
+        this.handoffExecutor = builder.getHandoffExecutor();
+        this.exceptionHandler = builder.getExceptionHandler();
         this.threadFactory = builder.getThreadFactory();
         this.terminationTask = builder.getTerminationTask();
         this.growthResistance = builder.getGrowthResistance();
@@ -337,6 +339,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     public static final class Builder {
         private ThreadFactory threadFactory = Executors.defaultThreadFactory();
         private Runnable terminationTask = NullRunnable.getInstance();
+        private Executor handoffExecutor = DEFAULT_HANDLER;
+        private Thread.UncaughtExceptionHandler exceptionHandler = JBossExecutors.loggingExceptionHandler();
         private int coreSize = 16;
         private int maxSize = 64;
         private long keepAliveTime = 30;
@@ -547,6 +551,47 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             Assert.checkMinimumParameter("maxQueueSize", 0, maxQueueSize);
             Assert.checkMaximumParameter("maxQueueSize", Integer.MAX_VALUE, maxQueueSize);
             this.maxQueueSize = maxQueueSize;
+            return this;
+        }
+
+        /**
+         * Get the handoff executor.
+         *
+         * @return the handoff executor (not {@code null})
+         */
+        public Executor getHandoffExecutor() {
+            return handoffExecutor;
+        }
+
+        /**
+         * Set the handoff executor.
+         *
+         * @param handoffExecutor the handoff executor (must not be {@code null})
+         * @return this builder
+         */
+        public Builder setHandoffExecutor(final Executor handoffExecutor) {
+            Assert.checkNotNullParam("handoffExecutor", handoffExecutor);
+            this.handoffExecutor = handoffExecutor;
+            return this;
+        }
+
+        /**
+         * Get the uncaught exception handler.
+         *
+         * @return the uncaught exception handler (not {@code null})
+         */
+        public Thread.UncaughtExceptionHandler getExceptionHandler() {
+            return exceptionHandler;
+        }
+
+        /**
+         * Set the uncaught exception handler.
+         *
+         * @param exceptionHandler the uncaught exception handler (must not be {@code null})
+         * @return this builder
+         */
+        public Builder setExceptionHandler(final Thread.UncaughtExceptionHandler exceptionHandler) {
+            this.exceptionHandler = exceptionHandler;
             return this;
         }
 
