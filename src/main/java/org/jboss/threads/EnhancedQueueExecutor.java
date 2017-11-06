@@ -173,10 +173,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      */
     private final ThreadFactory threadFactory;
     /**
-     * The termination task to execute when the thread pool exits.
-     */
-    private final Runnable terminationTask;
-    /**
      * The approximate set of pooled threads.
      */
     private final Set<Thread> runningThreads = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -260,6 +256,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * The handler for uncaught exceptions which occur during user tasks.
      */
     volatile Thread.UncaughtExceptionHandler exceptionHandler;
+
+    /**
+     * The termination task to execute when the thread pool exits.
+     */
+    volatile Runnable terminationTask;
 
     // =======================================================
     // Statistics fields and counters
@@ -1652,6 +1653,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     void completeTermination() {
         // be kind and un-interrupt the thread for the termination task
         Thread.interrupted();
+        final Runnable terminationTask = this.terminationTask;
+        this.terminationTask = null;
         safeRun(terminationTask);
         // notify all waiters
         QNode tail = EnhancedQueueExecutor.this.tail;
