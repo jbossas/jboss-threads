@@ -44,11 +44,6 @@ import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.atomic.LongAdder;
 
-import javax.management.InstanceAlreadyExistsException;
-import javax.management.InstanceNotFoundException;
-import javax.management.MBeanRegistrationException;
-import javax.management.MalformedObjectNameException;
-import javax.management.NotCompliantMBeanException;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 
@@ -363,7 +358,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 public ObjectInstance run() {
                     try {
                         return ManagementFactory.getPlatformMBeanServer().registerMBean(mxBean, new ObjectName("jboss.threads", "name", finalName));
-                    } catch (InstanceAlreadyExistsException | MalformedObjectNameException | NotCompliantMBeanException | MBeanRegistrationException ignored) {
+                    } catch (Throwable ignored) {
                     }
                     return null;
                 }
@@ -1677,7 +1672,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 public Void run() {
                     try {
                         ManagementFactory.getPlatformMBeanServer().unregisterMBean(handle.getObjectName());
-                    } catch (InstanceNotFoundException | MBeanRegistrationException | SecurityException ignored) {
+                    } catch (Throwable ignored) {
                     }
                     return null;
                 }
