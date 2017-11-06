@@ -1306,18 +1306,15 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             runningThreads.add(currentThread);
             TaskNode head;
             QNode headNext;
-            try {
-                final Runnable initialTask = this.initialTask;
-                if (initialTask != null) {
-                    if (UPDATE_STATISTICS) incrementActiveCount();
-                    safeRun(initialTask);
-                    if (UPDATE_STATISTICS) {
-                        decrementActiveCount();
-                        completedTaskCounter.increment();
-                    }
+            final Runnable initialTask = this.initialTask;
+            this.initialTask = null;
+            if (initialTask != null) {
+                if (UPDATE_STATISTICS) incrementActiveCount();
+                safeRun(initialTask);
+                if (UPDATE_STATISTICS) {
+                    decrementActiveCount();
+                    completedTaskCounter.increment();
                 }
-            } finally {
-                this.initialTask = null;
             }
             processingQueue: for (;;) {
                 head = EnhancedQueueExecutor.this.head;
@@ -1331,7 +1328,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                         } else {
                             Thread.interrupted();
                         }
-                        Runnable task = taskNode.task;
+                        Runnable task = taskNode.getTask();
+                        taskNode.setTask(null);
                         if (task != null) {
                             if (UPDATE_STATISTICS) incrementActiveCount();
                             safeRun(task);
@@ -1905,6 +1903,15 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             super(null);
             this.completedTaskCounter = completedTaskCounter;
             this.task = task;
+        }
+
+        public Runnable getTask() {
+            return task;
+        }
+
+        public TaskNode setTask(final Runnable task) {
+            this.task = task;
+            return this;
         }
     }
 
