@@ -19,10 +19,10 @@
 package org.jboss.threads;
 
 import static java.lang.Math.max;
+import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
 import static java.util.concurrent.locks.LockSupport.*;
 
-import java.security.AccessController;
 import java.security.AccessControlContext;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
@@ -1750,7 +1750,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     private static String readProperty(String name, String defVal) {
         final SecurityManager sm = System.getSecurityManager();
         if (sm != null) {
-            return AccessController.doPrivileged(new PrivilegedAction<String>() {
+            return doPrivileged(new PrivilegedAction<String>() {
                 public String run() {
                     return readPropertyRaw(name, defVal);
                 }
