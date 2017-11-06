@@ -19,9 +19,11 @@
 package org.jboss.threads;
 
 import static java.lang.Math.max;
+import static java.security.AccessController.getContext;
 import static java.util.concurrent.locks.LockSupport.*;
 
 import java.security.AccessController;
+import java.security.AccessControlContext;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -170,6 +172,10 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * The management bean instance.
      */
     private final MXBeanImpl mxBean;
+    /**
+     * The access control context of the creating thread.
+     */
+    private final AccessControlContext acc;
 
     // =======================================================
     // Current state fields
@@ -311,6 +317,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     EnhancedQueueExecutor(final Builder builder) {
+        this.acc = getContext();
         int maxSize = builder.getMaximumPoolSize();
         int coreSize = Math.min(builder.getCorePoolSize(), maxSize);
         this.handoffExecutor = builder.getHandoffExecutor();
