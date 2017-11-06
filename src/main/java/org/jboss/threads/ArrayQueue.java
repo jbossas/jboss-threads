@@ -51,18 +51,18 @@ public final class ArrayQueue<E> extends AbstractQueue<E> implements Queue<E> {
 
             public boolean hasNext() {
                 if (modCnt != modIdx) {
-                    throw new ConcurrentModificationException();
+                    throw Messages.msg.concurrentModification();
                 }
                 return pos < size;
             }
 
             public E next() {
                 if (modCnt != modIdx) {
-                    throw new ConcurrentModificationException();
+                    throw Messages.msg.concurrentModification();
                 }
                 final int pos = this.pos;
                 if (pos >= size) {
-                    throw new NoSuchElementException();
+                    throw Messages.msg.noSuchElement();
                 }
                 final E[] elements = ArrayQueue.this.elements;
                 final E value = elements[(tail + pos) % elements.length];
@@ -71,7 +71,7 @@ public final class ArrayQueue<E> extends AbstractQueue<E> implements Queue<E> {
             }
 
             public void remove() {
-                throw new UnsupportedOperationException();
+                throw Assert.unsupported();
             }
         };
     }

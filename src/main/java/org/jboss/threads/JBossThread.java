@@ -24,7 +24,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
-import org.jboss.logging.Logger;
 import org.wildfly.common.Assert;
 import org.wildfly.common.function.ExceptionBiConsumer;
 import org.wildfly.common.function.ExceptionBiFunction;
@@ -39,8 +38,10 @@ import org.wildfly.common.function.ExceptionSupplier;
  * A JBoss thread.  Supports logging and extra operations.
  */
 public class JBossThread extends Thread {
-    private static final Logger log = Logger.getLogger("org.jboss.threads");
-    private static final Logger ihlog = Logger.getLogger("org.jboss.threads.interrupt-handler");
+
+    static {
+        Version.getVersionString();
+    }
 
     private volatile InterruptHandler interruptHandler;
     private ThreadNameInfo threadNameInfo;
@@ -150,7 +151,7 @@ public class JBossThread extends Thread {
             oldVal = stateRef.get();
             if (oldVal == STATE_INTERRUPT_PENDING || oldVal == STATE_INTERRUPT_IN_PROGRESS) {
                 // already set
-                ihlog.tracef("Interrupting thread \"%s\" (already interrupted)", this);
+                Messages.msg.tracef("Interrupting thread \"%s\" (already interrupted)", this);
                 return;
             } else if (oldVal == STATE_INTERRUPT_DEFERRED) {
                 newVal = STATE_INTERRUPT_PENDING;
@@ -169,13 +170,13 @@ public class JBossThread extends Thread {
                 LockSupport.unpark(this);
             }
         } else {
-            ihlog.tracef("Interrupting thread \"%s\" (deferred)", this);
+            Messages.intMsg.tracef("Interrupting thread \"%s\" (deferred)", this);
         }
     }
 
     private void doInterrupt() {
         if (isInterrupted()) return;
-        ihlog.tracef("Interrupting thread \"%s\"", this);
+        Messages.msg.tracef("Interrupting thread \"%s\"", this);
         try {
             super.interrupt();
         } finally {
@@ -184,7 +185,7 @@ public class JBossThread extends Thread {
                 try {
                     interruptHandler.handleInterrupt(this);
                 } catch (Throwable t) {
-                    ihlog.errorf(t, "Interrupt handler %s threw an exception", interruptHandler);
+                    Messages.msg.interruptHandlerThrew(t, interruptHandler);
                 }
             }
         }
@@ -478,11 +479,11 @@ public class JBossThread extends Thread {
      * Execute the thread's {@code Runnable}.  Logs a trace message at the start and end of execution.
      */
     public void run() {
-        log.tracef("Thread \"%s\" starting execution", this);
+        Messages.msg.tracef("Thread \"%s\" starting execution", this);
         try {
             super.run();
         } finally {
-            log.tracef("Thread \"%s\" exiting", this);
+            Messages.msg.tracef("Thread \"%s\" exiting", this);
         }
     }
 
@@ -503,7 +504,7 @@ public class JBossThread extends Thread {
      */
     public void start() {
         super.start();
-        log.tracef("Started thread \"%s\"", this);
+        Messages.msg.tracef("Started thread \"%s\"", this);
     }
 
     /**
@@ -513,7 +514,7 @@ public class JBossThread extends Thread {
      */
     public void setUncaughtExceptionHandler(final UncaughtExceptionHandler eh) {
         super.setUncaughtExceptionHandler(eh);
-        log.tracef("Changed uncaught exception handler for \"%s\" to %s", this, eh);
+        Messages.msg.tracef("Changed uncaught exception handler for \"%s\" to %s", this, eh);
     }
 
     /**
@@ -534,7 +535,7 @@ public class JBossThread extends Thread {
     public static InterruptHandler getAndSetInterruptHandler(final InterruptHandler newInterruptHandler) {
         final JBossThread thread = currentThread();
         if (thread == null) {
-            throw new IllegalStateException("The current thread does not support interrupt handlers");
+            throw Messages.msg.noInterruptHandlers();
         }
         try {
             return thread.interruptHandler;

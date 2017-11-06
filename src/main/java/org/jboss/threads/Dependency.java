@@ -23,14 +23,13 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
-import org.jboss.logging.Logger;
+import org.wildfly.common.Assert;
 
 /**
  * A task which depends on other tasks, and which may have tasks depending upon it.  Such a task is automatically
  * run when using a provided executor when all its dependencies are satisfied.
  */
 public final class Dependency {
-    private static final Logger log = Logger.getLogger(Dependency.class);
 
     private static final AtomicIntegerFieldUpdater<Dependency> depUpdater = AtomicIntegerFieldUpdater.newUpdater(Dependency.class, "remainingDependencies");
 
@@ -61,7 +60,7 @@ public final class Dependency {
                 case RUNNING: runner.dependents.add(task); return;
                 case FAILED: return;
                 case DONE: break; // fall out of lock
-                default: throw new IllegalStateException();
+                default: throw Assert.impossibleSwitchCase(state);
             }
         }
         task.dependencyFinished();
@@ -77,7 +76,7 @@ public final class Dependency {
                     executor.execute(runner);
                     state = State.RUNNING;
                 } catch (RejectedExecutionException e) {
-                    log.errorf(e, "Error submitting task %s to executor", runner.runnable);
+                    Messages.msg.taskSubmitFailed(e, runner.runnable);
                     state = State.FAILED;
                     // clear stuff out since this object will likely be kept alive longer than these objects need to be
                     runner.runnable = null;

@@ -53,11 +53,11 @@ class DelegatingExecutorService extends AbstractExecutorService implements Execu
     }
 
     public void shutdown() {
-        throw new SecurityException("shutdown() not allowed on container-managed executor");
+        throw Messages.msg.notAllowedContainerManaged("shutdown");
     }
 
     public List<Runnable> shutdownNow() {
-        throw new SecurityException("shutdownNow() not allowed on container-managed executor");
+        throw Messages.msg.notAllowedContainerManaged("shutdownNow");
     }
 
     public static ExecutorService directExecutorService() {

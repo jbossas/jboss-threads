@@ -92,7 +92,7 @@ public final class AtomicArray<T, V> {
         Assert.checkNotNullParam("updater", updater);
         Assert.checkNotNullParam("emptyArray", emptyArray);
         if (emptyArray.length > 0) {
-            throw new IllegalArgumentException("Empty array parameter is not empty");
+            throw Messages.msg.arrayNotEmpty();
         }
         return new AtomicArray<>(updater, emptyArray);
     }

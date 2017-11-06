@@ -63,7 +63,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
                 limitSemaphore.release(-diff);
             } else if (diff > 0) {
                 if (! limitSemaphore.tryAcquire(diff)) {
-                    throw new IllegalArgumentException("Cannot reduce maximum threads below current number of running threads");
+                    throw Messages.msg.cannotReduceMaxBelowCurrent();
                 }
             }
             this.maxThreads = maxThreads;
@@ -79,11 +79,11 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
                     semaphore.acquire();
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    throw new ExecutionInterruptedException();
+                    throw Messages.msg.executionInterrupted();
                 }
             } else {
                 if (! semaphore.tryAcquire()) {
-                    throw new RejectedExecutionException("Task limit reached");
+                    throw Messages.msg.taskLimitReached();
                 }
             }
             boolean ok = false;
@@ -107,7 +107,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
                     }
                 });
                 if (thread == null) {
-                    throw new ThreadCreationException("No threads can be created");
+                    throw Messages.msg.noThreadCreated();
                 }
                 thread.start();
                 ok = true;
@@ -146,7 +146,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
                     }
                 });
                 if (thread == null) {
-                    throw new ThreadCreationException("No threads can be created");
+                    throw Messages.msg.noThreadCreated();
                 }
                 thread.start();
                 ok = true;
@@ -164,7 +164,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
         try {
             final Semaphore semaphore = limitSemaphore;
             if (! semaphore.tryAcquire(timeout, unit)) {
-                throw new ExecutionTimedOutException();
+                throw Messages.msg.executionTimedOut();
             }
             boolean ok = false;
             try {
@@ -187,7 +187,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
                     }
                 });
                 if (thread == null) {
-                    throw new ThreadCreationException("No threads can be created");
+                    throw Messages.msg.noThreadCreated();
                 }
                 thread.start();
                 ok = true;
@@ -205,7 +205,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
         try {
             final Semaphore semaphore = limitSemaphore;
             if (! semaphore.tryAcquire()) {
-                throw new RejectedExecutionException("Task limit reached");
+                throw Messages.msg.taskLimitReached();
             }
             boolean ok = false;
             try {
@@ -228,7 +228,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
                     }
                 });
                 if (thread == null) {
-                    throw new ThreadCreationException("No threads can be created");
+                    throw Messages.msg.noThreadCreated();
                 }
                 thread.start();
                 ok = true;
@@ -276,7 +276,7 @@ class ThreadFactoryExecutor implements BlockingExecutor, BoundedThreadPoolExecut
 
     public void setKeepAliveTime(final long milliseconds) {
         if (milliseconds != 0L) {
-            throw new IllegalArgumentException("Keep-alive may only be set to 0ms");
+            throw Messages.msg.keepAliveNotZero();
         }
     }
 

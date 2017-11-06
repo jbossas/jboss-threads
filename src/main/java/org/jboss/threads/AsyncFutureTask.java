@@ -26,6 +26,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import org.wildfly.common.Assert;
+
 /**
  * A base class for implementing asynchronous tasks.  This class implements
  * {@link java.util.concurrent.Future Future} as well as {@link AsyncFuture}, and
@@ -56,22 +58,6 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
                 case FAILED: listener.handleFailed(AsyncFutureTask.this, (Throwable) result, attachment);
             }
         }
-    }
-
-    private static TimeoutException operationTimedOut() {
-        return new TimeoutException("Operation timed out");
-    }
-
-    private static CancellationException operationCancelled() {
-        return new CancellationException("Operation was cancelled");
-    }
-
-    private static ExecutionException operationFailed(final Throwable cause) {
-        return new ExecutionException("Operation failed", cause);
-    }
-
-    private static IllegalStateException invalidState() {
-        return new IllegalStateException("Invalid state entered");
     }
 
     /**
@@ -259,11 +245,14 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
     @SuppressWarnings({ "unchecked" })
     public final T get() throws InterruptedException, ExecutionException {
         synchronized (AsyncFutureTask.this) {
-            switch (await()) {
-                case CANCELLED: throw operationCancelled();
-                case FAILED: throw operationFailed((Throwable) result);
+            final Status status = await();
+            switch (status) {
+                case CANCELLED:
+                    throw Messages.msg.operationCancelled();
+                case FAILED:
+                    throw Messages.msg.operationFailed((Throwable) result);
                 case COMPLETE: return (T) result;
-                default: throw invalidState();
+                default: throw Assert.impossibleSwitchCase(status);
             }
         }
     }
@@ -272,12 +261,16 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
     @SuppressWarnings({ "unchecked" })
     public final T get(final long timeout, final TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
         synchronized (AsyncFutureTask.this) {
-            switch (await(timeout, unit)) {
-                case CANCELLED: throw operationCancelled();
-                case FAILED: throw operationFailed((Throwable) result);
+            final Status status = await(timeout, unit);
+            switch (status) {
+                case CANCELLED:
+                    throw Messages.msg.operationCancelled();
+                case FAILED:
+                    throw Messages.msg.operationFailed((Throwable) result);
                 case COMPLETE: return (T) result;
-                case WAITING: throw operationTimedOut();
-                default: throw invalidState();
+                case WAITING:
+                    throw Messages.msg.operationTimedOut();
+                default: throw Assert.impossibleSwitchCase(status);
             }
         }
     }
@@ -286,11 +279,14 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
     @SuppressWarnings({ "unchecked" })
     public final T getUninterruptibly() throws CancellationException, ExecutionException {
         synchronized (AsyncFutureTask.this) {
-            switch (awaitUninterruptibly()) {
-                case CANCELLED: throw operationCancelled();
-                case FAILED: throw operationFailed((Throwable) result);
+            final Status status = awaitUninterruptibly();
+            switch (status) {
+                case CANCELLED:
+                    throw Messages.msg.operationCancelled();
+                case FAILED:
+                    throw Messages.msg.operationFailed((Throwable) result);
                 case COMPLETE: return (T) result;
-                default: throw invalidState();
+                default: throw Assert.impossibleSwitchCase(status);
             }
         }
     }
@@ -299,12 +295,16 @@ public abstract class AsyncFutureTask<T> implements AsyncFuture<T> {
     @SuppressWarnings({ "unchecked" })
     public final T getUninterruptibly(final long timeout, final TimeUnit unit) throws CancellationException, ExecutionException, TimeoutException {
         synchronized (AsyncFutureTask.this) {
-            switch (awaitUninterruptibly(timeout, unit)) {
-                case CANCELLED: throw operationCancelled();
-                case FAILED: throw operationFailed((Throwable) result);
+            final Status status = awaitUninterruptibly(timeout, unit);
+            switch (status) {
+                case CANCELLED:
+                    throw Messages.msg.operationCancelled();
+                case FAILED:
+                    throw Messages.msg.operationFailed((Throwable) result);
                 case COMPLETE: return (T) result;
-                case WAITING: throw operationTimedOut();
-                default: throw invalidState();
+                case WAITING:
+                    throw Messages.msg.operationTimedOut();
+                default: throw Assert.impossibleSwitchCase(status);
             }
         }
     }

@@ -26,6 +26,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
+import org.wildfly.common.Assert;
 
 /**
  * @deprecated Use {@link EnhancedQueueExecutor} instead.
@@ -126,7 +127,7 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
     }
 
     public void setBlocking(final boolean blocking) {
-        throw new UnsupportedOperationException();
+        throw Assert.unsupported();
     }
 
     public RejectedExecutionHandler getRejectedExecutionHandler() {
@@ -160,7 +161,7 @@ public final class JBossThreadPoolExecutor extends ThreadPoolExecutor implements
         public void rejectedExecution(final Runnable r, final ThreadPoolExecutor executor) {
             rejectCount.incrementAndGet();
             if (isShutdown()) {
-                throw new StoppedExecutorException();
+                throw Messages.msg.shutDownInitiated();
             }
             delegate.rejectedExecution(r, executor);
         }

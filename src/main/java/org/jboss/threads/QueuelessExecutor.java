@@ -32,7 +32,6 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.jboss.logging.Logger;
 import org.jboss.threads.management.BoundedThreadPoolExecutorMBean;
 import org.wildfly.common.Assert;
 
@@ -44,8 +43,6 @@ import org.wildfly.common.Assert;
  */
 @Deprecated
 public final class QueuelessExecutor extends AbstractExecutorService implements BlockingExecutorService, BoundedThreadPoolExecutorMBean, ShutdownListenable {
-
-    private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
 
     private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
     private final ThreadFactory threadFactory;
@@ -254,7 +251,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         lock.lock();
         try {
             if (! stop) {
-                throw new IllegalStateException("Not shut down");
+                throw Messages.msg.notShutDown();
             }
             final Date deadline = new Date(clipHigh(unit.toMillis(timeout) + System.currentTimeMillis()));
             final Condition threadDeath = this.threadDeath;
@@ -302,7 +299,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         try {
             for (;;) {
                 if (stop) {
-                    throw new StoppedExecutorException("Executor has been shut down");
+                    throw Messages.msg.shutDownInitiated();
                 }
                 final Worker waitingWorker;
                 if ((waitingWorker = this.waitingWorker) != null) {
@@ -319,10 +316,10 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     // if we haven't reached the thread limit yet, start up another thread
                     final Thread thread = threadFactory.newThread(new Worker(task));
                     if (thread == null) {
-                        throw new ThreadCreationException();
+                        throw Messages.msg.noThreadCreated();
                     }
                     if (! runningThreads.add(thread)) {
-                        throw new ThreadCreationException("Unable to add new thread to the running set");
+                        throw Messages.msg.cannotAddThread();
                     }
                     if (currentSize >= largestPoolSize) {
                         largestPoolSize = currentSize + 1;
@@ -345,7 +342,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                         continue;
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        throw new ExecutionInterruptedException();
+                        throw Messages.msg.executionInterrupted();
                     }
                 }
                 this.workRunnable = task;
@@ -358,7 +355,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    throw new ExecutionInterruptedException();
+                    throw Messages.msg.executionInterrupted();
                 } finally {
                     this.workRunnable = null;
                 }
@@ -369,7 +366,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         if (executor != null) {
             executor.execute(task);
         } else {
-            throw new RejectedExecutionException();
+            throw Messages.msg.executionRejected();
         }
     }
 
@@ -383,7 +380,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         try {
             for (;;) {
                 if (stop) {
-                    throw new StoppedExecutorException("Executor has been shut down");
+                    throw Messages.msg.shutDownInitiated();
                 }
                 final Worker waitingWorker;
                 if ((waitingWorker = this.waitingWorker) != null) {
@@ -400,10 +397,10 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     // if we haven't reached the thread limit yet, start up another thread
                     final Thread thread = threadFactory.newThread(new Worker(task));
                     if (thread == null) {
-                        throw new ThreadCreationException();
+                        throw Messages.msg.noThreadCreated();
                     }
                     if (! runningThreads.add(thread)) {
-                        throw new ThreadCreationException("Unable to add new thread to the running set");
+                        throw Messages.msg.cannotAddThread();
                     }
                     if (currentSize >= largestPoolSize) {
                         largestPoolSize = currentSize + 1;
@@ -451,7 +448,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         try {
             for (;;) {
                 if (stop) {
-                    throw new StoppedExecutorException("Executor has been shut down");
+                    throw Messages.msg.shutDownInitiated();
                 }
                 final Worker waitingWorker;
                 if ((waitingWorker = this.waitingWorker) != null) {
@@ -468,10 +465,10 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     // if we haven't reached the thread limit yet, start up another thread
                     final Thread thread = threadFactory.newThread(new Worker(task));
                     if (thread == null) {
-                        throw new ThreadCreationException();
+                        throw Messages.msg.noThreadCreated();
                     }
                     if (! runningThreads.add(thread)) {
-                        throw new ThreadCreationException("Unable to add new thread to the running set");
+                        throw Messages.msg.cannotAddThread();
                     }
                     if (currentSize >= largestPoolSize) {
                         largestPoolSize = currentSize + 1;
@@ -489,7 +486,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                 try {
                     final long remaining = deadline - now;
                     if (remaining <= 0L) {
-                        throw new ExecutionTimedOutException();
+                        throw Messages.msg.executionTimedOut();
                     }
                     runnableDequeued.await(remaining, TimeUnit.MILLISECONDS);
                     now = System.currentTimeMillis();
@@ -516,7 +513,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         try {
             for (;;) {
                 if (stop) {
-                    throw new StoppedExecutorException("Executor has been shut down");
+                    throw Messages.msg.shutDownInitiated();
                 }
                 final Worker waitingWorker;
                 if ((waitingWorker = this.waitingWorker) != null) {
@@ -533,10 +530,10 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     // if we haven't reached the thread limit yet, start up another thread
                     final Thread thread = threadFactory.newThread(new Worker(task));
                     if (thread == null) {
-                        throw new ThreadCreationException();
+                        throw Messages.msg.noThreadCreated();
                     }
                     if (! runningThreads.add(thread)) {
-                        throw new ThreadCreationException("Unable to add new thread to the running set");
+                        throw Messages.msg.cannotAddThread();
                     }
                     if (currentSize >= largestPoolSize) {
                         largestPoolSize = currentSize + 1;
@@ -556,7 +553,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
         if (executor != null) {
             executor.execute(task);
         } else {
-            throw new RejectedExecutionException();
+            throw Messages.msg.executionRejected();
         }
     }
 
@@ -614,7 +611,7 @@ public final class QueuelessExecutor extends AbstractExecutorService implements 
                     try {
                         taskExecutor.execute(runnable);
                     } catch (Throwable t) {
-                        log.errorf(t, "Task execution failed for task %s", runnable);
+                        Messages.msg.executionFailed(t, runnable);
                     }
                     idleSince = System.currentTimeMillis();
                     // Get next task

@@ -152,7 +152,7 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
                             continue;
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
-                            throw new ExecutionInterruptedException();
+                            throw Messages.msg.executionInterrupted();
                         }
                     } else {
                         executor = handoffExecutor;
@@ -169,6 +169,7 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
         }
     }
 
+    @Deprecated
     public void executeBlocking(final Runnable task) throws RejectedExecutionException, InterruptedException {
         Assert.checkNotNullParam("task", task);
         OUT: for (;;) {
@@ -197,6 +198,7 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
         }
     }
 
+    @Deprecated
     public void executeBlocking(final Runnable task, final long timeout, final TimeUnit unit) throws RejectedExecutionException, InterruptedException {
         Assert.checkNotNullParam("task", task);
         long now = System.currentTimeMillis();
@@ -223,7 +225,7 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
                 if (! queue.offer(task)) {
                     final long remaining = deadline - now;
                     if (remaining <= 0L) {
-                        throw new ExecutionTimedOutException();
+                        throw Messages.msg.executionTimedOut();
                     }
                     removeCondition.await(remaining, TimeUnit.MILLISECONDS);
                     now = System.currentTimeMillis();
@@ -237,6 +239,7 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
 
     }
 
+    @Deprecated
     public void executeNonBlocking(final Runnable task) throws RejectedExecutionException {
         Assert.checkNotNullParam("task", task);
         Executor executor;
@@ -284,11 +287,11 @@ public final class OrderedExecutor extends AbstractExecutorService implements Bl
     }
 
     public void shutdown() {
-        throw new SecurityException("shutdown() not allowed on container-managed executor");
+        throw Messages.msg.notAllowedContainerManaged("shutdown");
     }
 
     public List<Runnable> shutdownNow() {
-        throw new SecurityException("shutdownNow() not allowed on container-managed executor");
+        throw Messages.msg.notAllowedContainerManaged("shutdownNow");
     }
 
     private class Runner implements Runnable {

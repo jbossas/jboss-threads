@@ -72,6 +72,9 @@ import sun.misc.Contended;
  */
 @Contended
 public final class EnhancedQueueExecutor extends AbstractExecutorService implements ManageableThreadPoolExecutorService {
+    static {
+        Version.getVersionString();
+    }
 
     /*
     ┌──────────────────────────┐

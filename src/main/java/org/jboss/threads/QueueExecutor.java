@@ -32,7 +32,6 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.jboss.logging.Logger;
 import org.jboss.threads.management.BoundedQueueThreadPoolExecutorMBean;
 import org.wildfly.common.Assert;
 
@@ -43,7 +42,7 @@ import org.wildfly.common.Assert;
  */
 @Deprecated
 public final class QueueExecutor extends AbstractExecutorService implements BlockingExecutorService, BoundedQueueThreadPoolExecutorMBean, ShutdownListenable {
-    private static final Logger log = Logger.getLogger("org.jboss.threads.executor");
+
     private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
 
     private final Lock lock = new ReentrantLock();
@@ -157,7 +156,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         try {
             for (;;) {
                 if (stop) {
-                    throw new StoppedExecutorException("Executor is stopped");
+                    throw Messages.msg.shutDownInitiated();
                 }
                 // Try core thread first, then queue, then extra thread
                 final int count = threadCount;
@@ -183,7 +182,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
                         removeCondition.await();
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
-                        throw new ExecutionInterruptedException("Thread interrupted");
+                        throw Messages.msg.executionInterrupted();
                     }
                 } else {
                     // delegate the task outside of the lock.
@@ -198,7 +197,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         if (executor != null) {
             executor.execute(task);
         } else {
-            throw new RejectedExecutionException();
+            throw Messages.msg.executionRejected();
         }
         return;
     }
@@ -221,7 +220,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         try {
             for (;;) {
                 if (stop) {
-                    throw new StoppedExecutorException("Executor is stopped");
+                    throw Messages.msg.shutDownInitiated();
                 }
                 // Try core thread first, then queue, then extra thread
                 final int count = threadCount;
@@ -276,7 +275,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         try {
             for (;;) {
                 if (stop) {
-                    throw new StoppedExecutorException("Executor is stopped");
+                    throw Messages.msg.shutDownInitiated();
                 }
                 // Try core thread first, then queue, then extra thread
                 final int count = threadCount;
@@ -299,7 +298,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
                 }
                 final long remaining = deadline - now;
                 if (remaining <= 0L) {
-                    throw new ExecutionTimedOutException();
+                    throw Messages.msg.executionTimedOut();
                 }
                 removeCondition.await(remaining, TimeUnit.MILLISECONDS);
                 now = System.currentTimeMillis();
@@ -326,7 +325,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         lock.lock();
         try {
             if (stop) {
-                throw new StoppedExecutorException("Executor is stopped");
+                throw Messages.msg.shutDownInitiated();
             }
             // Try core thread first, then queue, then extra thread
             final int count = threadCount;
@@ -440,7 +439,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         lock.lockInterruptibly();
         try {
             if (workers.contains(Thread.currentThread())) {
-                throw new IllegalStateException("Cannot await termination of a thread pool from one of its threads");
+                throw Messages.msg.cannotAwaitWithin();
             }
             final long start = System.currentTimeMillis();
             long elapsed = 0L;
@@ -665,7 +664,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
     private void startNewThread(final Runnable task) {
         final Thread thread = threadFactory.newThread(new Worker(task));
         if (thread == null) {
-            throw new ThreadCreationException();
+            throw Messages.msg.noThreadCreated();
         }
         workers.add(thread);
         final int size = workers.size();
@@ -789,7 +788,7 @@ public final class QueueExecutor extends AbstractExecutorService implements Bloc
         if (task != null) try {
             taskExecutor.execute(task);
         } catch (Throwable t) {
-            log.errorf(t, "Task execution failed for task %s", task);
+            Messages.msg.executionFailed(t, task);
         }
     }
 

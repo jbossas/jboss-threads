@@ -70,7 +70,7 @@ public class BalancingExecutor implements Executor {
         final Executor[] executors = this.executors;
         final int len = executors.length;
         if (len == 0) {
-            throw new RejectedExecutionException("No executors available to run task");
+            throw Messages.msg.noExecutorsAvailable();
         }
         executors[ThreadLocalRandom.current().nextInt(len)].execute(command);
     }

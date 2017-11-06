@@ -798,7 +798,7 @@ public final class JBossExecutors {
             throw t;
         } catch (Throwable t) {
             failed(notifier, t, task, attachment);
-            throw new RuntimeException("Unknown throwable received", t);
+            throw Messages.msg.unknownThrowable(t);
         } finally {
             if (ok) finished(notifier, task, attachment);
         }

@@ -121,7 +121,7 @@ public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolE
         public void rejectedExecution(final Runnable r, final ThreadPoolExecutor executor) {
             rejectCount.incrementAndGet();
             if (isShutdown()) {
-                throw new StoppedExecutorException();
+                throw Messages.msg.shutDownInitiated();
             }
             delegate.rejectedExecution(r, executor);
         }
