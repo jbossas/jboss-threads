@@ -878,7 +878,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         Assert.checkMinimumParameter("timeout", 0, timeout);
         Assert.checkNotNullParam("unit", unit);
         if (timeout > 0) {
-            final TerminateWaiterNode node = new TerminateWaiterNode(Thread.currentThread());
+            final Thread thread = Thread.currentThread();
+            if (runningThreads.contains(thread)) {
+                throw Messages.msg.cannotAwaitWithin();
+            }
+            final TerminateWaiterNode node = new TerminateWaiterNode(thread);
             // stick it on the queue
             QNode tail = this.tail;
             QNode tailNext;
