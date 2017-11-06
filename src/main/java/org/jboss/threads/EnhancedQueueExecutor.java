@@ -23,6 +23,7 @@ import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
 import static java.util.concurrent.locks.LockSupport.*;
 
+import java.lang.management.ManagementFactory;
 import java.security.AccessControlContext;
 import java.security.PrivilegedAction;
 import java.util.ArrayList;
@@ -37,10 +38,19 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.atomic.LongAdder;
+
+import javax.management.InstanceAlreadyExistsException;
+import javax.management.InstanceNotFoundException;
+import javax.management.MBeanRegistrationException;
+import javax.management.MalformedObjectNameException;
+import javax.management.NotCompliantMBeanException;
+import javax.management.ObjectInstance;
+import javax.management.ObjectName;
 
 import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
@@ -136,6 +146,10 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * Attempt to lock frequently-contended operations on the list tail.
      */
     static final boolean TAIL_LOCK = readBooleanProperty("tail-lock", false);
+    /**
+     * Set the default value for whether an mbean is to be auto-registered for the thread pool.
+     */
+    static final boolean REGISTER_MBEAN = readBooleanProperty("register-mbean", true);
 
     // =======================================================
     // Constants
@@ -172,6 +186,10 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * The management bean instance.
      */
     private final MXBeanImpl mxBean;
+    /**
+     * The MBean registration handle (if any).
+     */
+    private final ObjectInstance handle;
     /**
      * The access control context of the creating thread.
      */
@@ -316,6 +334,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // Constructor
     // =======================================================
 
+    static final AtomicInteger sequence = new AtomicInteger(1);
+
     EnhancedQueueExecutor(final Builder builder) {
         this.acc = getContext();
         int maxSize = builder.getMaximumPoolSize();
@@ -333,6 +353,21 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         timeoutNanos = max(1L, keepAliveTime);
         queueSize = withMaxQueueSize(withCurrentQueueSize(0L, 0), builder.getMaximumQueueSize());
         mxBean = new MXBeanImpl();
+        if (builder.isRegisterMBean()) {
+            final String configuredName = builder.getMBeanName();
+            final String finalName = configuredName != null ? configuredName : "threadpool-" + sequence.getAndIncrement();
+            handle = doPrivileged(new PrivilegedAction<ObjectInstance>() {
+                public ObjectInstance run() {
+                    try {
+                        return ManagementFactory.getPlatformMBeanServer().registerMBean(mxBean, new ObjectName("jboss.threads", "name", finalName));
+                    } catch (InstanceAlreadyExistsException | MalformedObjectNameException | NotCompliantMBeanException | MBeanRegistrationException ignored) {
+                    }
+                    return null;
+                }
+            }, acc);
+        } else {
+            handle = null;
+        }
     }
 
     // =======================================================
@@ -355,6 +390,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         private float growthResistance;
         private boolean allowCoreTimeOut;
         private int maxQueueSize = Integer.MAX_VALUE;
+        private boolean registerMBean = REGISTER_MBEAN;
+        private String mBeanName;
 
         /**
          * Construct a new instance.
@@ -609,6 +646,46 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
          */
         public EnhancedQueueExecutor build() {
             return new EnhancedQueueExecutor(this);
+        }
+
+        /**
+         * Determine whether an MBean should automatically be registered for this pool.
+         *
+         * @return {@code true} if an MBean is to be auto-registered; {@code false} otherwise
+         */
+        public boolean isRegisterMBean() {
+            return registerMBean;
+        }
+
+        /**
+         * Establish whether an MBean should automatically be registered for this pool.
+         *
+         * @param registerMBean {@code true} if an MBean is to be auto-registered; {@code false} otherwise
+         * @return this builder
+         */
+        public Builder setRegisterMBean(final boolean registerMBean) {
+            this.registerMBean = registerMBean;
+            return this;
+        }
+
+        /**
+         * Get the overridden MBean name.
+         *
+         * @return the overridden MBean name, or {@code null} if a default name should be generated
+         */
+        public String getMBeanName() {
+            return mBeanName;
+        }
+
+        /**
+         * Set the overridden MBean name.
+         *
+         * @param mBeanName the overridden MBean name, or {@code null} if a default name should be generated
+         * @return this builder
+         */
+        public Builder setMBeanName(final String mBeanName) {
+            this.mBeanName = mBeanName;
+            return this;
         }
     }
 
@@ -1590,6 +1667,18 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 unpark(((TerminateWaiterNode) tailNext).getAndClearThread());
             }
             tailNext = tailNext.getNext();
+        }
+        final ObjectInstance handle = this.handle;
+        if (handle != null) {
+            doPrivileged(new PrivilegedAction<Void>() {
+                public Void run() {
+                    try {
+                        ManagementFactory.getPlatformMBeanServer().unregisterMBean(handle.getObjectName());
+                    } catch (InstanceNotFoundException | MBeanRegistrationException | SecurityException ignored) {
+                    }
+                    return null;
+                }
+            }, acc);
         }
     }
 
