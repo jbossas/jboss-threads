@@ -1472,7 +1472,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      *      handler throws this exception
      */
     boolean tryCreateThreadForTask(final Runnable runnable, final float growthResistance) throws RejectedExecutionException {
-        int oldSize, newSize;
+        int oldSize;
         long oldStat;
         for (;;) {
             oldStat = threadStatus;
@@ -1494,7 +1494,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 }
             }
             // try to increase
-            newSize = oldSize + 1;
+            final int newSize = oldSize + 1;
             // state change ex3:
             //   threadStatus.size ← threadStatus(snapshot).size + 1
             // cannot succeed: sh1
@@ -1506,55 +1506,61 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             // post-actions (fail):
             //   retry whole loop
             if (compareAndSetThreadStatus(oldStat, withCurrentSize(oldStat, newSize))) {
-                boolean ok = false;
-                try {
-                    // got permission to (try to) start a thread
-                    Thread thread;
-                    try {
-                        thread = threadFactory.newThread(new ThreadBody(runnable));
-                    } catch (Throwable t) {
-                        if (UPDATE_STATISTICS && runnable != null) rejectedTaskCounter.increment();
-                        rejectException(runnable, t);
-                        return true;
-                    }
-                    if (thread == null) {
-                        if (UPDATE_STATISTICS && runnable != null) rejectedTaskCounter.increment();
-                        rejectNoThread(runnable);
-                        return true;
-                    }
-                    try {
-                        thread.start();
-                    } catch (Throwable t) {
-                        if (UPDATE_STATISTICS && runnable != null) rejectedTaskCounter.increment();
-                        rejectException(runnable, t);
-                        return true;
-                    }
-                    ok = true;
-                    // increment peak thread count
-                    if (UPDATE_STATISTICS) {
-                        submittedTaskCounter.increment();
-                        int oldVal;
-                        do {
-                            oldVal = peakThreadCount;
-                            if (oldVal >= newSize) break;
-                        } while (! compareAndSetPeakThreadCount(oldVal, newSize));
-                    }
-                    return true;
-                } finally {
-                    if (! ok) {
-                        // roll back our thread allocation attempt
-                        // state change ex4:
-                        //   threadStatus.size ← threadStatus.size - 1
-                        // succeeds: ex3
-                        // preconditions:
-                        //   threadStatus.size > 0
-                        do {
-                            oldStat = threadStatus;
-                            // newSize and oldSize are no longer valid here
+                doPrivileged(new PrivilegedAction<Void>() {
+                    public Void run() {
+                        boolean ok = false;
+                        try {
+                            // got permission to (try to) start a thread
+                            Thread thread;
+                            try {
+                                thread = threadFactory.newThread(new ThreadBody(runnable));
+                            } catch (Throwable t) {
+                                if (UPDATE_STATISTICS && runnable != null) rejectedTaskCounter.increment();
+                                rejectException(runnable, t);
+                                return null;
+                            }
+                            if (thread == null) {
+                                if (UPDATE_STATISTICS && runnable != null) rejectedTaskCounter.increment();
+                                rejectNoThread(runnable);
+                                return null;
+                            }
+                            try {
+                                thread.start();
+                            } catch (Throwable t) {
+                                if (UPDATE_STATISTICS && runnable != null) rejectedTaskCounter.increment();
+                                rejectException(runnable, t);
+                                return null;
+                            }
+                            ok = true;
+                            // increment peak thread count
+                            if (UPDATE_STATISTICS) {
+                                submittedTaskCounter.increment();
+                                int oldVal;
+                                do {
+                                    oldVal = peakThreadCount;
+                                    if (oldVal >= newSize) break;
+                                } while (! compareAndSetPeakThreadCount(oldVal, newSize));
+                            }
+                            return null;
+                        } finally {
+                            if (! ok) {
+                                // roll back our thread allocation attempt
+                                // state change ex4:
+                                //   threadStatus.size ← threadStatus.size - 1
+                                // succeeds: ex3
+                                // preconditions:
+                                //   threadStatus.size > 0
+                                long oldStat;
+                                do {
+                                    oldStat = threadStatus;
+                                    // newSize and oldSize are no longer valid here
+                                }
+                                while (! compareAndSetThreadStatus(oldStat, withCurrentSize(oldStat, currentSizeOf(oldStat) - 1)));
+                            }
                         }
-                        while (! compareAndSetThreadStatus(oldStat, withCurrentSize(oldStat, currentSizeOf(oldStat) - 1)));
                     }
-                }
+                }, acc);
+                return true;
             }
             // retry loop
         }
