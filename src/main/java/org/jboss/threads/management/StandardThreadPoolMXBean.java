@@ -264,4 +264,14 @@ public interface StandardThreadPoolMXBean {
      * @return an estimate of the number of tasks completed by this thread pool
      */
     long getCompletedTaskCount();
+
+    /**
+     * Get the number of spin misses that have occurred.  Spin misses indicate that contention is not being properly
+     * handled by the thread pool.
+     *
+     * @return an estimate of the number of spin misses
+     */
+    default long getSpinMissCount() {
+        return 0;
+    }
 }
