@@ -1537,8 +1537,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     /**
      * Roll back a thread allocation, possibly terminating the pool.  Only call after {@link #tryAllocateThread(float)} returns {@link #AT_YES}.
-     *
-     * @return {@code true} if the pool is fully shut down as a result of the deallocation
      */
     void deallocateThread() {
         long oldStat;
