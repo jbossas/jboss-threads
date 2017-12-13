@@ -1238,6 +1238,15 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         this.exceptionHandler = exceptionHandler;
     }
 
+    /**
+     * Set the termination task, overwriting any previous setting.
+     *
+     * @param terminationTask the termination task, or {@code null} to perform no termination task
+     */
+    public void setTerminationTask(final Runnable terminationTask) {
+        this.terminationTask = terminationTask;
+    }
+
     // =======================================================
     // Statistics & metrics API
     // =======================================================
