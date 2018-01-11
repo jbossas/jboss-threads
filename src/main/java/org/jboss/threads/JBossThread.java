@@ -33,6 +33,7 @@ import org.wildfly.common.function.ExceptionObjIntConsumer;
 import org.wildfly.common.function.ExceptionObjLongConsumer;
 import org.wildfly.common.function.ExceptionRunnable;
 import org.wildfly.common.function.ExceptionSupplier;
+import org.wildfly.common.function.Functions;
 
 /**
  * A JBoss thread.  Supports logging and extra operations.
@@ -304,11 +305,11 @@ public class JBossThread extends Thread {
     }
 
     public static <T, R, E extends Exception> R applyInterruptDeferredEx(final ExceptionFunction<T, R, E> function, T param) throws E {
-        return applyInterruptDeferredEx(ExceptionFunction::apply, function, param);
+        return applyInterruptDeferredEx(Functions.exceptionFunctionBiFunction(), function, param);
     }
 
     public static <T, E extends Exception> T getInterruptDeferredEx(final ExceptionSupplier<T, E> supplier) throws E {
-        return applyInterruptDeferredEx(ExceptionSupplier::get, supplier);
+        return applyInterruptDeferredEx(Functions.exceptionFunctionBiFunction(), Functions.exceptionSupplierFunction(), supplier);
     }
 
     public static <T, E extends Exception> void acceptInterruptDeferredEx(final ExceptionObjLongConsumer<T, E> consumer, T param1, long param2) throws E {
@@ -348,11 +349,11 @@ public class JBossThread extends Thread {
     }
 
     public static <T, E extends Exception> void acceptInterruptDeferredEx(final ExceptionConsumer<T, E> consumer, T param) throws E {
-        acceptInterruptDeferredEx(ExceptionConsumer::accept, consumer, param);
+        acceptInterruptDeferredEx(Functions.exceptionConsumerBiConsumer(), consumer, param);
     }
 
     public static <E extends Exception> void runInterruptDeferredEx(final ExceptionRunnable<E> runnable) throws E {
-        acceptInterruptDeferredEx((ExceptionConsumer<ExceptionRunnable<E>, E>) ExceptionRunnable::run, runnable);
+        acceptInterruptDeferredEx(Functions.exceptionConsumerBiConsumer(), Functions.exceptionRunnableConsumer(), runnable);
     }
 
 
@@ -369,11 +370,11 @@ public class JBossThread extends Thread {
     }
 
     public static <T, R, E extends Exception> R applyInterruptResumedEx(final ExceptionFunction<T, R, E> function, T param) throws E {
-        return applyInterruptResumedEx(ExceptionFunction::apply, function, param);
+        return applyInterruptResumedEx(Functions.exceptionFunctionBiFunction(), function, param);
     }
 
     public static <T, E extends Exception> T getInterruptResumedEx(final ExceptionSupplier<T, E> supplier) throws E {
-        return applyInterruptResumedEx(ExceptionSupplier::get, supplier);
+        return applyInterruptResumedEx(Functions.exceptionFunctionBiFunction(), Functions.exceptionSupplierFunction(), supplier);
     }
 
     public static <T, E extends Exception> void acceptInterruptResumedEx(final ExceptionObjLongConsumer<T, E> consumer, T param1, long param2) throws E {
@@ -413,11 +414,11 @@ public class JBossThread extends Thread {
     }
 
     public static <T, E extends Exception> void acceptInterruptResumedEx(final ExceptionConsumer<T, E> consumer, T param) throws E {
-        acceptInterruptResumedEx(ExceptionConsumer::accept, consumer, param);
+        acceptInterruptResumedEx(Functions.exceptionConsumerBiConsumer(), consumer, param);
     }
 
     public static <E extends Exception> void runInterruptResumedEx(final ExceptionRunnable<E> runnable) throws E {
-        acceptInterruptResumedEx((ExceptionConsumer<ExceptionRunnable<E>, E>) ExceptionRunnable::run, runnable);
+        acceptInterruptResumedEx(Functions.exceptionConsumerBiConsumer(), Functions.exceptionRunnableConsumer(), runnable);
     }
 
     private static boolean unregisterDeferral(final JBossThread thread) {
@@ -560,11 +561,11 @@ public class JBossThread extends Thread {
     }
 
     public static <T, R, E extends Exception> R applyWithInterruptHandler(InterruptHandler interruptHandler, ExceptionFunction<T, R, E> function, T param1) throws E {
-        return applyWithInterruptHandler(interruptHandler, ExceptionFunction::apply, function, param1);
+        return applyWithInterruptHandler(interruptHandler, Functions.exceptionFunctionBiFunction(), function, param1);
     }
 
     public static <R, E extends Exception> R getWithInterruptHandler(InterruptHandler interruptHandler, ExceptionSupplier<R, E> function) throws E {
-        return applyWithInterruptHandler(interruptHandler, ExceptionSupplier::get, function);
+        return applyWithInterruptHandler(interruptHandler, Functions.exceptionFunctionBiFunction(), Functions.exceptionSupplierFunction(), function);
     }
 
     public static <T, E extends Exception> void acceptWithInterruptHandler(InterruptHandler interruptHandler, ExceptionObjLongConsumer<T, E> function, T param1, long param2) throws E {
@@ -619,11 +620,11 @@ public class JBossThread extends Thread {
     }
 
     public static <T, E extends Exception> void acceptWithInterruptHandler(InterruptHandler interruptHandler, ExceptionConsumer<T, E> function, T param1) throws E {
-        acceptWithInterruptHandler(interruptHandler, ExceptionConsumer::accept, function, param1);
+        acceptWithInterruptHandler(interruptHandler, Functions.exceptionConsumerBiConsumer(), function, param1);
     }
 
     public static <E extends Exception> void runWithInterruptHandler(InterruptHandler interruptHandler, ExceptionRunnable<E> function) throws E {
-        acceptWithInterruptHandler(interruptHandler, ExceptionRunnable::run, function);
+        acceptWithInterruptHandler(interruptHandler, Functions.exceptionConsumerBiConsumer(), Functions.exceptionRunnableConsumer(), function);
     }
 
     /**
