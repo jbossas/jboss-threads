@@ -1388,7 +1388,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                                         if (task == EXIT ||
                                             isShutdownRequested(oldVal) ||
                                             isAllowCoreTimeout(oldVal) ||
-                                            currentSizeOf(oldVal) >= coreSizeOf(oldVal)
+                                            currentSizeOf(oldVal) > coreSizeOf(oldVal)
                                         ) {
                                             if (tryDeallocateThread(oldVal)) {
                                                 // clear to exit.
