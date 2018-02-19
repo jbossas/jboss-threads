@@ -22,7 +22,8 @@ import static java.lang.Math.max;
 import static java.lang.Thread.holdsLock;
 import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
-import static java.util.concurrent.locks.LockSupport.*;
+import static java.util.concurrent.locks.LockSupport.parkNanos;
+import static java.util.concurrent.locks.LockSupport.unpark;
 
 import java.lang.management.ManagementFactory;
 import java.security.AccessControlContext;
@@ -53,6 +54,7 @@ import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 import org.wildfly.common.Assert;
 import org.wildfly.common.annotation.NotNull;
+
 import sun.misc.Contended;
 
 /**
@@ -1382,14 +1384,14 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                             final long timeoutNanos = EnhancedQueueExecutor.this.timeoutNanos;
                             long oldVal = threadStatus;
                             if (elapsed >= timeoutNanos || task == EXIT || currentSizeOf(oldVal) > maxSizeOf(oldVal)) {
-                                if (newNode.compareAndSetTask(task, GAVE_UP)) {
-                                    // try to exit this thread
-                                    for (;;) {
-                                        if (task == EXIT ||
-                                            isShutdownRequested(oldVal) ||
-                                            isAllowCoreTimeout(oldVal) ||
-                                            currentSizeOf(oldVal) > coreSizeOf(oldVal)
+                                // try to exit this thread, if we are allowed
+                                if (task == EXIT ||
+                                        isShutdownRequested(oldVal) ||
+                                        isAllowCoreTimeout(oldVal) ||
+                                        currentSizeOf(oldVal) > coreSizeOf(oldVal)
                                         ) {
+                                    if (newNode.compareAndSetTask(task, GAVE_UP)) {
+                                        for (; ; ) {
                                             if (tryDeallocateThread(oldVal)) {
                                                 // clear to exit.
                                                 runningThreads.remove(currentThread);
@@ -1397,20 +1399,14 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                                             }
                                             if (UPDATE_STATISTICS) spinMisses.increment();
                                             oldVal = threadStatus;
-                                        } else {
-                                            // nope, we're a core thread & can't exit right now.  Just keep parking.
-                                            newNode.compareAndSetTask(GAVE_UP, WAITING);
-                                            park(EnhancedQueueExecutor.this);
-                                            Thread.interrupted();
-                                            elapsed = System.nanoTime() - start;
-                                            // retry wait-for-task loop
-                                            continue waitingForTask;
                                         }
                                     }
-                                    //throw Assert.unreachableCode();
+                                } else {
+                                    parkNanos(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                    Thread.interrupted();
+                                    elapsed = System.nanoTime() - start;
+                                    // retry inner
                                 }
-                                // otherwise retry inner
-                                if (UPDATE_STATISTICS) spinMisses.increment();
                                 continue waitingForTask;
                             } else {
                                 assert task == WAITING;
