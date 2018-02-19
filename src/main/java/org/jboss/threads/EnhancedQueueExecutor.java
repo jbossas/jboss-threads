@@ -1382,14 +1382,14 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                             final long timeoutNanos = EnhancedQueueExecutor.this.timeoutNanos;
                             long oldVal = threadStatus;
                             if (elapsed >= timeoutNanos || task == EXIT || currentSizeOf(oldVal) > maxSizeOf(oldVal)) {
-                                if (newNode.compareAndSetTask(task, GAVE_UP)) {
-                                    // try to exit this thread
-                                    for (;;) {
-                                        if (task == EXIT ||
-                                            isShutdownRequested(oldVal) ||
-                                            isAllowCoreTimeout(oldVal) ||
-                                            currentSizeOf(oldVal) > coreSizeOf(oldVal)
+                                // try to exit this thread, if we are allowed
+                                if (task == EXIT ||
+                                        isShutdownRequested(oldVal) ||
+                                        isAllowCoreTimeout(oldVal) ||
+                                        currentSizeOf(oldVal) > coreSizeOf(oldVal)
                                         ) {
+                                    if (newNode.compareAndSetTask(task, GAVE_UP)) {
+                                        for (;;) {
                                             if (tryDeallocateThread(oldVal)) {
                                                 // clear to exit.
                                                 runningThreads.remove(currentThread);
@@ -1397,21 +1397,18 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                                             }
                                             if (UPDATE_STATISTICS) spinMisses.increment();
                                             oldVal = threadStatus;
-                                        } else {
-                                            // nope, we're a core thread & can't exit right now.  Just keep parking.
-                                            newNode.compareAndSetTask(GAVE_UP, WAITING);
-                                            park(EnhancedQueueExecutor.this);
-                                            Thread.interrupted();
-                                            elapsed = System.nanoTime() - start;
-                                            // retry wait-for-task loop
-                                            continue waitingForTask;
                                         }
+                                        //throw Assert.unreachableCode();
                                     }
-                                    //throw Assert.unreachableCode();
+                                    continue waitingForTask;
+                                } else {
+                                    parkNanos(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                    Thread.interrupted();
+                                    elapsed = System.nanoTime() - start;
+                                    // retry inner
+                                    continue waitingForTask;
                                 }
-                                // otherwise retry inner
-                                if (UPDATE_STATISTICS) spinMisses.increment();
-                                continue waitingForTask;
+                                //throw Assert.unreachableCode();
                             } else {
                                 assert task == WAITING;
                                 parkNanos(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
@@ -1420,6 +1417,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                                 // retry inner
                                 continue waitingForTask;
                             }
+                            //throw Assert.unreachableCode();
                         }
                         //throw Assert.unreachableCode();
                     } // :waitingForTask
