@@ -1393,7 +1393,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                                     }
                                     continue waitingForTask;
                                 } else {
-                                    parkNanos(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                    if (elapsed >= timeoutNanos) {
+                                        park(EnhancedQueueExecutor.this);
+                                    } else {
+                                        parkNanos(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                    }
                                     Thread.interrupted();
                                     elapsed = System.nanoTime() - start;
                                     // retry inner
