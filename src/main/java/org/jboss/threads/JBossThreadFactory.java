@@ -114,6 +114,7 @@ public final class JBossThreadFactory implements ThreadFactory {
         if (initialPriority != null) thread.setPriority(initialPriority.intValue());
         if (daemon != null) thread.setDaemon(daemon.booleanValue());
         if (uncaughtExceptionHandler != null) thread.setUncaughtExceptionHandler(uncaughtExceptionHandler);
+        JBossExecutors.clearContextClassLoader(thread);
         return thread;
     }
 }

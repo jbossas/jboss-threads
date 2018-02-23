@@ -723,11 +723,12 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      */
     public void execute(Runnable runnable) {
         Assert.checkNotNullParam("runnable", runnable);
+        final Runnable realRunnable = JBossExecutors.classLoaderPreservingTaskUnchecked(runnable);
         int result;
         if (TAIL_LOCK) synchronized (tailLock) {
-            result = tryExecute(runnable);
+            result = tryExecute(realRunnable);
         } else {
-            result = tryExecute(runnable);
+            result = tryExecute(realRunnable);
         }
         boolean ok = false;
         if (result == EXE_OK) {
@@ -738,16 +739,16 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             if (UPDATE_STATISTICS) submittedTaskCounter.increment();
             return;
         } else if (result == EXE_CREATE_THREAD) try {
-            ok = doStartThread(runnable);
+            ok = doStartThread(realRunnable);
         } finally {
             if (! ok) deallocateThread();
         } else {
             if (UPDATE_STATISTICS) rejectedTaskCounter.increment();
             if (result == EXE_REJECT_SHUTDOWN) {
-                rejectShutdown(runnable);
+                rejectShutdown(realRunnable);
             } else {
                 assert result == EXE_REJECT_QUEUE_FULL;
-                rejectQueueFull(runnable);
+                rejectQueueFull(realRunnable);
             }
         }
     }
@@ -1337,6 +1338,9 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
             // run the initial task
             doRunTask(getAndClearInitialTask());
+
+            // clear TCCL
+            JBossExecutors.clearContextClassLoader(currentThread);
 
             // main loop
             QNode node;
@@ -1977,6 +1981,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 // nothing else we can safely do here
             }
         } finally {
+            // clear TCCL
+            JBossExecutors.clearContextClassLoader(Thread.currentThread());
             // clear interrupt status
             Thread.interrupted();
         }
