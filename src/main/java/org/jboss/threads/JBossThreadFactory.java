@@ -111,6 +111,10 @@ public final class JBossThreadFactory implements ThreadFactory {
         }
         thread.setThreadNameInfo(nameInfo);
         thread.setName(nameInfo.format(thread, namePattern));
+        
+        // Clear the TCCL to avoid classloader leaks - see WFLY-9742
+        thread.setContextClassLoader(null);
+        
         if (initialPriority != null) thread.setPriority(initialPriority.intValue());
         if (daemon != null) thread.setDaemon(daemon.booleanValue());
         if (uncaughtExceptionHandler != null) thread.setUncaughtExceptionHandler(uncaughtExceptionHandler);
