@@ -18,6 +18,7 @@
 
 package org.jboss.threads;
 
+import java.lang.reflect.Field;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
@@ -30,6 +31,8 @@ import java.security.PrivilegedAction;
 import java.security.AccessController;
 import java.security.Permission;
 import org.jboss.logging.Logger;
+import org.wildfly.common.Assert;
+import sun.misc.Unsafe;
 
 /**
  * JBoss thread- and executor-related utility and factory methods.
@@ -630,8 +633,51 @@ public final class JBossExecutors {
         if (sm != null) {
             sm.checkPermission(COPY_CONTEXT_CLASSLOADER_PERMISSION);
         }
-        final ClassLoader loader = getContextClassLoader(Thread.currentThread());
-        return new ContextClassLoaderSavingRunnable(loader, delegate);
+        return classLoaderPreservingTaskUnchecked(delegate);
+    }
+
+    static final ClassLoader SAFE_CL;
+
+    static {
+        ClassLoader safeClassLoader = JBossExecutors.class.getClassLoader();
+        if (safeClassLoader == null) {
+            safeClassLoader = ClassLoader.getSystemClassLoader();
+        }
+        if (safeClassLoader == null) {
+            safeClassLoader = new ClassLoader() {
+            };
+        }
+        SAFE_CL = safeClassLoader;
+    }
+
+    static Runnable classLoaderPreservingTaskUnchecked(final Runnable delegate) {
+        Assert.checkNotNullParam("delegate", delegate);
+        return new ContextClassLoaderSavingRunnable(getContextClassLoader(Thread.currentThread()), delegate);
+    }
+
+    static final Unsafe unsafe;
+
+    static final long contextClassLoaderOffs;
+
+    static {
+        unsafe = AccessController.doPrivileged(new PrivilegedAction<Unsafe>() {
+            public Unsafe run() {
+                try {
+                    final Field field = Unsafe.class.getDeclaredField("theUnsafe");
+                    field.setAccessible(true);
+                    return (Unsafe) field.get(null);
+                } catch (IllegalAccessException e) {
+                    throw new IllegalAccessError(e.getMessage());
+                } catch (NoSuchFieldException e) {
+                    throw new NoSuchFieldError(e.getMessage());
+                }
+            }
+        });
+        try {
+            contextClassLoaderOffs = unsafe.objectFieldOffset(Thread.class.getDeclaredField("contextClassLoader"));
+        } catch (NoSuchFieldException e) {
+            throw new NoSuchFieldError(e.getMessage());
+        }
     }
 
     /**
@@ -641,15 +687,7 @@ public final class JBossExecutors {
      * @return the context class loader
      */
     static ClassLoader getContextClassLoader(final Thread thread) {
-        if (System.getSecurityManager() != null) {
-            return AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
-                public ClassLoader run() {
-                    return thread.getContextClassLoader();
-                }
-            });
-        } else {
-            return thread.getContextClassLoader();
-        }
+        return (ClassLoader) unsafe.getObject(thread, contextClassLoaderOffs);
     }
 
     /**
@@ -660,18 +698,10 @@ public final class JBossExecutors {
      * @return the old context class loader
      */
     static ClassLoader getAndSetContextClassLoader(final Thread thread, final ClassLoader newClassLoader) {
-        if (System.getSecurityManager() != null) {
-            return AccessController.doPrivileged(new PrivilegedAction<ClassLoader>() {
-                public ClassLoader run() {
-                    final ClassLoader old = thread.getContextClassLoader();
-                    thread.setContextClassLoader(newClassLoader);
-                    return old;
-                }
-            });
-        } else {
-            final ClassLoader old = thread.getContextClassLoader();
-            thread.setContextClassLoader(newClassLoader);
-            return old;
+        try {
+            return getContextClassLoader(thread);
+        } finally {
+            setContextClassLoader(thread, newClassLoader);
         }
     }
 
@@ -682,16 +712,16 @@ public final class JBossExecutors {
      * @param classLoader the new context class loader
      */
     static void setContextClassLoader(final Thread thread, final ClassLoader classLoader) {
-        if (System.getSecurityManager() != null) {
-            AccessController.doPrivileged(new PrivilegedAction<Void>() {
-                public Void run() {
-                    thread.setContextClassLoader(classLoader);
-                    return null;
-                }
-            });
-        } else {
-            thread.setContextClassLoader(classLoader);
-        }
+        unsafe.putObject(thread, contextClassLoaderOffs, classLoader);
+    }
+
+    /**
+     * Privileged method to clear the context class loader of the given thread to a safe non-{@code null} value.
+     *
+     * @param thread the thread to introspect
+     */
+    static void clearContextClassLoader(final Thread thread) {
+        unsafe.putObject(thread, contextClassLoaderOffs, SAFE_CL);
     }
 
     /**
