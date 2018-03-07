@@ -20,39 +20,18 @@ package org.jboss.threads;
 
 import java.lang.reflect.Field;
 import java.security.AccessController;
-import java.security.PrivilegedAction;
 
 final class ThreadLocalResetter implements Runnable {
     private static final ThreadLocalResetter INSTANCE = new ThreadLocalResetter();
 
-    private static final Field THREAD_LOCAL_MAP_FIELD;
-    private static final Field INHERITABLE_THREAD_LOCAL_MAP_FIELD;
+    private static final long threadLocalMapOffs;
+    private static final long inheritableThreadLocalMapOffs;
 
     static {
-        THREAD_LOCAL_MAP_FIELD = AccessController.doPrivileged(new PrivilegedAction<Field>() {
-            public Field run() {
-                final Field field;
-                try {
-                    field = Thread.class.getDeclaredField("threadLocals");
-                    field.setAccessible(true);
-                } catch (NoSuchFieldException e) {
-                    return null;
-                }
-                return field;
-            }
-        });
-        INHERITABLE_THREAD_LOCAL_MAP_FIELD = AccessController.doPrivileged(new PrivilegedAction<Field>() {
-            public Field run() {
-                final Field field;
-                try {
-                    field = Thread.class.getDeclaredField("inheritableThreadLocals");
-                    field.setAccessible(true);
-                } catch (NoSuchFieldException e) {
-                    return null;
-                }
-                return field;
-            }
-        });
+        final Field threadLocals = AccessController.doPrivileged(new DeclaredFieldAction(Thread.class, "threadLocals"));
+        threadLocalMapOffs = threadLocals == null ? 0 : JBossExecutors.unsafe.objectFieldOffset(threadLocals);
+        final Field inheritableThreadLocals = AccessController.doPrivileged(new DeclaredFieldAction(Thread.class, "inheritableThreadLocals"));
+        inheritableThreadLocalMapOffs = inheritableThreadLocals == null ? 0 : JBossExecutors.unsafe.objectFieldOffset(inheritableThreadLocals);
     }
 
     static ThreadLocalResetter getInstance() {
@@ -64,16 +43,8 @@ final class ThreadLocalResetter implements Runnable {
 
     public void run() {
         final Thread thread = Thread.currentThread();
-        clear(thread, THREAD_LOCAL_MAP_FIELD);
-        clear(thread, INHERITABLE_THREAD_LOCAL_MAP_FIELD);
-    }
-
-    private static void clear(final Thread currentThread, final Field field) {
-        try {
-            if (field != null) field.set(currentThread, null);
-        } catch (IllegalAccessException e) {
-            // ignore
-        }
+        if (threadLocalMapOffs != 0) JBossExecutors.unsafe.putObject(thread, threadLocalMapOffs, null);
+        if (inheritableThreadLocalMapOffs != 0) JBossExecutors.unsafe.putObject(thread, inheritableThreadLocalMapOffs, null);
     }
 
     public String toString() {
