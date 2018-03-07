@@ -563,7 +563,7 @@ public final class JBossExecutors {
     // ==================================================
 
     private static final Runnable NULL_RUNNABLE = NullRunnable.getInstance();
-    private static final Runnable THREAD_LOCAL_RESETTER = ThreadLocalResetter.getInstance();
+    private static final Runnable THREAD_LOCAL_RESETTER;
 
     /**
      * Get the null runnable which does nothing.
@@ -678,6 +678,7 @@ public final class JBossExecutors {
         } catch (NoSuchFieldException e) {
             throw new NoSuchFieldError(e.getMessage());
         }
+        THREAD_LOCAL_RESETTER = ThreadLocalResetter.getInstance();
     }
 
     /**
