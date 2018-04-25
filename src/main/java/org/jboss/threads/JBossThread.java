@@ -20,6 +20,8 @@ package org.jboss.threads;
 
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
@@ -40,12 +42,15 @@ import org.wildfly.common.function.Functions;
  */
 public class JBossThread extends Thread {
 
+    private static final RuntimePermission MODIFY_THREAD_PERMISSION = new RuntimePermission("modifyThread");
+
     static {
         Version.getVersionString();
     }
 
     private volatile InterruptHandler interruptHandler;
     private ThreadNameInfo threadNameInfo;
+    private List<Runnable> exitHandlers;
 
     /**
      * The thread is maybe interrupted.  Possible transitions:
@@ -477,7 +482,8 @@ public class JBossThread extends Thread {
     }
 
     /**
-     * Execute the thread's {@code Runnable}.  Logs a trace message at the start and end of execution.
+     * Execute the thread's {@code Runnable}.  Logs a trace message at the start and end of execution and runs exit
+     * handlers when the thread exits.
      */
     public void run() {
         Messages.msg.tracef("Thread \"%s\" starting execution", this);
@@ -485,7 +491,42 @@ public class JBossThread extends Thread {
             super.run();
         } finally {
             Messages.msg.tracef("Thread \"%s\" exiting", this);
+            final List<Runnable> exitHandlers = this.exitHandlers;
+            if (exitHandlers != null) for (Runnable exitHandler : exitHandlers) {
+                try {
+                    exitHandler.run();
+                } catch (Throwable t) {
+                    try {
+                        getUncaughtExceptionHandler().uncaughtException(this, t);
+                    } catch (Throwable ignored) {}
+                }
+            }
         }
+    }
+
+    /**
+     * Register a runnable task to be executed when the current thread exits.
+     *
+     * @param hook the task to run
+     * @return {@code true} if the task was registered; {@code false} if the task is {@code null} or if the current
+     *      thread is not an instance of {@code JBossThread}
+     * @throws SecurityException if a security manager is installed and the caller's security context lacks the
+     *      {@code modifyThread} {@link RuntimePermission}
+     */
+    public static boolean onExit(Runnable hook) throws SecurityException {
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            sm.checkPermission(MODIFY_THREAD_PERMISSION);
+        }
+        final JBossThread thread = currentThread();
+        if (thread == null || hook == null) return false;
+        List<Runnable> exitHandlers = thread.exitHandlers;
+        if (exitHandlers == null) {
+            exitHandlers = new ArrayList<>();
+            thread.exitHandlers = exitHandlers;
+        }
+        exitHandlers.add(new ContextClassLoaderSavingRunnable(JBossExecutors.getContextClassLoader(thread), hook));
+        return true;
     }
 
     /**
