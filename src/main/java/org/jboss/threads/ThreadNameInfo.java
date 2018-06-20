@@ -83,7 +83,7 @@ final class ThreadNameInfo {
                     case 'g': builder.append(globalThreadSequenceNum); break;
                     case 'f': builder.append(factorySequenceNum); break;
                     case 'p': if (group != null) appendGroupPath(group, builder); break;
-                    case 'i': builder.append(thread.getId());
+                    case 'i': builder.append(thread.getId()); break;
                     case 'G': if (group != null) builder.append(group.getName()); break;
                 }
             }
