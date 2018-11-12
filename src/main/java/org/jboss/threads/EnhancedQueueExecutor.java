@@ -19,6 +19,7 @@
 package org.jboss.threads;
 
 import static java.lang.Math.max;
+import static java.lang.Thread.currentThread;
 import static java.lang.Thread.holdsLock;
 import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
@@ -221,6 +222,12 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     volatile TaskNode tail;
 
     /**
+     * The linked list of threads waiting for termination of this thread pool.
+     */
+    @SuppressWarnings("unused") // used by field updater
+    volatile Waiter terminationWaiters;
+
+    /**
      * Queue size:
      * <ul>
      *     <li>Bit 00..1F: current queue length</li>
@@ -305,6 +312,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     private static final AtomicReferenceFieldUpdater<EnhancedQueueExecutor, TaskNode> headUpdater = AtomicReferenceFieldUpdater.newUpdater(EnhancedQueueExecutor.class, TaskNode.class, "head");
     private static final AtomicReferenceFieldUpdater<EnhancedQueueExecutor, TaskNode> tailUpdater = AtomicReferenceFieldUpdater.newUpdater(EnhancedQueueExecutor.class, TaskNode.class, "tail");
+    private static final AtomicReferenceFieldUpdater<EnhancedQueueExecutor, Waiter> terminationWaitersUpdater = AtomicReferenceFieldUpdater.newUpdater(EnhancedQueueExecutor.class, Waiter.class, "terminationWaiters");
 
     private static final AtomicLongFieldUpdater<EnhancedQueueExecutor> queueSizeUpdater = AtomicLongFieldUpdater.newUpdater(EnhancedQueueExecutor.class, "queueSize");
     private static final AtomicLongFieldUpdater<EnhancedQueueExecutor> threadStatusUpdater = AtomicLongFieldUpdater.newUpdater(EnhancedQueueExecutor.class, "threadStatus");
@@ -343,7 +351,10 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // Marker objects
     // =======================================================
 
+    static final QNode TERMINATE_REQUESTED = new TerminateWaiterNode(null);
     static final QNode TERMINATE_COMPLETE = new TerminateWaiterNode(null);
+
+    static final Waiter TERMINATE_COMPLETE_WAITER = new Waiter(null);
 
     static final Runnable WAITING = new NullRunnable();
     static final Runnable GAVE_UP = new NullRunnable();
@@ -826,33 +837,24 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             if (runningThreads.contains(thread)) {
                 throw Messages.msg.cannotAwaitWithin();
             }
-            final TerminateWaiterNode node = new TerminateWaiterNode(thread);
-            // stick it on the queue
-            QNode tail = this.tail;
-            QNode tailNext;
-            for (;;) {
-                tailNext = tail.getNext();
-                if (tailNext == null) {
-                    if (tail.compareAndSetNext(null, node)) {
-                        // now we wait!
-                        break;
-                    }
-                } else if (tailNext == TERMINATE_COMPLETE) {
-                    // nothing more to be done!
+            Waiter waiters = this.terminationWaiters;
+            if (waiters == TERMINATE_COMPLETE_WAITER) {
+                return true;
+            }
+            final Waiter waiter = new Waiter(waiters);
+            waiter.setThread(currentThread());
+            while (! compareAndSetTerminationWaiters(waiters, waiter)) {
+                waiters = this.terminationWaiters;
+                if (waiters == TERMINATE_COMPLETE_WAITER) {
                     return true;
-                } else {
-                    if (UPDATE_TAIL && tailNext instanceof TaskNode) {
-                        assert tail instanceof TaskNode; // else tailNext couldn't possibly be a TaskNode
-                        compareAndSetTail(((TaskNode) tail), ((TaskNode) tailNext));
-                    }
-                    tail = tailNext;
                 }
+                waiter.setNext(waiters);
             }
             try {
                 parkNanos(this, unit.toNanos(timeout));
             } finally {
                 // prevent future spurious unparks without sabotaging the queue's integrity
-                node.getAndClearThread();
+                waiter.setThread(null);
             }
         }
         if (Thread.interrupted()) throw new InterruptedException();
@@ -911,7 +913,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             TaskNode tail = this.tail;
             QNode tailNext;
             // a marker to indicate that termination was requested
-            final TerminateWaiterNode terminateNode = new TerminateWaiterNode(null);
             for (;;) {
                 tailNext = tail.getNext();
                 if (tailNext instanceof TaskNode) {
@@ -927,8 +928,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                     //   tail(snapshot) is a task node
                     //   tail(snapshot).next is a (list of) pool thread node(s) or null
                     // postconditions (succeed):
-                    //   tail(snapshot).next is terminateNode(null)
-                    if (tail.compareAndSetNext(node, terminateNode)) {
+                    //   tail(snapshot).next is TERMINATE_REQUESTED
+                    if (tail.compareAndSetNext(node, TERMINATE_REQUESTED)) {
                         // got it!
                         // state change sh3:
                         //   node.task ← EXIT
@@ -1760,22 +1761,12 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         this.terminationTask = null;
         safeRun(terminationTask);
         // notify all waiters
-        QNode tail = EnhancedQueueExecutor.this.tail;
-        QNode tailNext = tail.getAndSetNext(TERMINATE_COMPLETE);
-        while (tailNext != null) {
-            // state change ct1:
-            //    tail(snapshot).next(snapshot).thread ← null
-            // succeeds: sh2
-            // preconditions:
-            //    threadStatus is shutdown (because sh1 ≺ … ≺ ct1)
-            // postconditions: -
-            // post-actions:
-            //    unpark(twn)
-            if (tailNext instanceof TerminateWaiterNode) {
-                unpark(((TerminateWaiterNode) tailNext).getAndClearThread());
-            }
-            tailNext = tailNext.getNext();
+        Waiter waiters = getAndSetTerminationWaiters(TERMINATE_COMPLETE_WAITER);
+        while (waiters != null) {
+            unpark(waiters.getThread());
+            waiters = waiters.getNext();
         }
+        tail.getAndSetNext(TERMINATE_COMPLETE);
         final ObjectInstance handle = this.handle;
         if (handle != null) {
             doPrivileged(new PrivilegedAction<Void>() {
@@ -1824,6 +1815,14 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     void compareAndSetTail(final TaskNode expect, final TaskNode update) {
         tailUpdater.compareAndSet(this, expect, update);
+    }
+
+    boolean compareAndSetTerminationWaiters(final Waiter expect, final Waiter update) {
+        return terminationWaitersUpdater.compareAndSet(this, expect, update);
+    }
+
+    Waiter getAndSetTerminationWaiters(final Waiter update) {
+        return terminationWaitersUpdater.getAndSet(this, update);
     }
 
     // =======================================================
