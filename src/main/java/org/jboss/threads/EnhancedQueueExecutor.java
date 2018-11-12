@@ -380,7 +380,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 public ObjectInstance run() {
                     try {
                         final Hashtable<String, String> table = new Hashtable<>();
-                        table.put("name", finalName);
+                        table.put("name", ObjectName.quote(finalName));
                         table.put("type", "thread-pool");
                         return ManagementFactory.getPlatformMBeanServer().registerMBean(mxBean, new ObjectName("jboss.threads", table));
                     } catch (Throwable ignored) {
