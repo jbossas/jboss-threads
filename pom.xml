@@ -51,6 +51,14 @@
 
     <properties>
         <test.level>INFO</test.level>
+
+        <jboss.threads.eqe.update-tail>true</jboss.threads.eqe.update-tail>
+        <jboss.threads.eqe.statistics>true</jboss.threads.eqe.statistics>
+        <jboss.threads.eqe.unlimited-queue>false</jboss.threads.eqe.unlimited-queue>
+        <jboss.threads.eqe.combined-lock>false</jboss.threads.eqe.combined-lock>
+        <jboss.threads.eqe.tail-lock>true</jboss.threads.eqe.tail-lock>
+        <jboss.threads.eqe.head-lock>true</jboss.threads.eqe.head-lock>
+        <jboss.threads.eqe.register-mbean>false</jboss.threads.eqe.register-mbean>
     </properties>
 
     <dependencies>
@@ -126,6 +134,34 @@
                         <property>
                             <name>java.util.logging.manager</name>
                             <value>org.jboss.logmanager.LogManager</value>
+                        </property>
+                        <property>
+                            <name>jboss.threads.eqe.update-tail</name>
+                            <value>${jboss.threads.eqe.update-tail}</value>
+                        </property>
+                        <property>
+                            <name>jboss.threads.eqe.statistics</name>
+                            <value>${jboss.threads.eqe.statistics}</value>
+                        </property>
+                        <property>
+                            <name>jboss.threads.eqe.unlimited-queue</name>
+                            <value>${jboss.threads.eqe.unlimited-queue}</value>
+                        </property>
+                        <property>
+                            <name>jboss.threads.eqe.combined-lock</name>
+                            <value>${jboss.threads.eqe.combined-lock}</value>
+                        </property>
+                        <property>
+                            <name>jboss.threads.eqe.tail-lock</name>
+                            <value>${jboss.threads.eqe.tail-lock}</value>
+                        </property>
+                        <property>
+                            <name>jboss.threads.eqe.head-lock</name>
+                            <value>${jboss.threads.eqe.head-lock}</value>
+                        </property>
+                        <property>
+                            <name>jboss.threads.eqe.register-mbean</name>
+                            <value>${jboss.threads.eqe.register-mbean}</value>
                         </property>
                     </systemProperties>
                     <forkMode>always</forkMode>
