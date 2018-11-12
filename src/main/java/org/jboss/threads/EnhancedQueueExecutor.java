@@ -20,7 +20,6 @@ package org.jboss.threads;
 
 import static java.lang.Math.max;
 import static java.lang.Thread.currentThread;
-import static java.lang.Thread.holdsLock;
 import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
 import static java.util.concurrent.locks.LockSupport.*;
@@ -46,6 +45,8 @@ import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
@@ -168,11 +169,12 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     /**
      * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
      */
-    final Object tailLock = new Object();
+    final Lock tailLock = createLock();
+
     /**
      * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
      */
-    final Object headLock = COMBINED_LOCK ? tailLock : new Object();
+    final Lock headLock = COMBINED_LOCK ? tailLock : createLock();
 
     // =======================================================
     // Immutable configuration fields
@@ -734,8 +736,14 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         Assert.checkNotNullParam("runnable", runnable);
         final Runnable realRunnable = JBossExecutors.classLoaderPreservingTaskUnchecked(runnable);
         int result;
-        if (TAIL_LOCK) synchronized (tailLock) {
-            result = tryExecute(realRunnable);
+        if (TAIL_LOCK) {
+            Lock lock = this.tailLock;
+            lock.lock();
+            try {
+                result = tryExecute(realRunnable);
+            } finally {
+                lock.unlock();
+            }
         } else {
             result = tryExecute(realRunnable);
         }
@@ -1340,7 +1348,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
          */
         public void run() {
             final Thread currentThread = Thread.currentThread();
-            final Object headLock = EnhancedQueueExecutor.this.headLock;
+            final Lock headLock = EnhancedQueueExecutor.this.headLock;
             final LongAdder spinMisses = EnhancedQueueExecutor.this.spinMisses;
             runningThreads.add(currentThread);
 
@@ -1353,8 +1361,13 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             // main loop
             QNode node;
             processingQueue: for (;;) {
-                if (HEAD_LOCK) synchronized (headLock) {
-                    node = getOrAddNode();
+                if (HEAD_LOCK) {
+                    headLock.lock();
+                    try {
+                        node = getOrAddNode();
+                    } finally {
+                        headLock.unlock();
+                    }
                 } else {
                     node = getOrAddNode();
                 }
@@ -1567,7 +1580,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * @return {@code true} if the thread was deallocated, or {@code false} to retry with a new {@code oldStat}
      */
     boolean tryDeallocateThread(long oldStat) {
-        assert ! holdsLock(headLock) && ! holdsLock(tailLock);
+        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         // roll back our thread allocation attempt
         // state change ex4:
         //   threadStatus.size ← threadStatus.size - 1
@@ -1593,7 +1606,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * @throws RejectedExecutionException if {@code runnable} is not {@code null} and the thread could not be created or started
      */
     boolean doStartThread(Runnable runnable) throws RejectedExecutionException {
-        assert ! holdsLock(headLock) && ! holdsLock(tailLock);
+        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         Thread thread;
         try {
             thread = threadFactory.newThread(new ThreadBody(runnable));
@@ -1752,7 +1765,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     void completeTermination() {
-        assert ! holdsLock(headLock) && ! holdsLock(tailLock);
+        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         // be kind and un-interrupt the thread for the termination task
         Thread.interrupted();
         final Runnable terminationTask = this.terminationTask;
@@ -1948,6 +1961,18 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     }
 
     // =======================================================
+    // Locks
+    // =======================================================
+
+    private static Lock createLock() {
+        return new ReentrantLock();
+    }
+
+    private static boolean currentThreadHolds(final Lock lock) {
+        return ((ReentrantLock) lock).isHeldByCurrentThread();
+    }
+
+    // =======================================================
     // Static configuration
     // =======================================================
 
@@ -1977,7 +2002,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     void safeRun(final Runnable task) {
-        assert ! holdsLock(headLock) && ! holdsLock(tailLock);
+        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         try {
             if (task != null) task.run();
         } catch (Throwable t) {
