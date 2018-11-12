@@ -54,7 +54,6 @@ import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 import org.wildfly.common.Assert;
 import org.wildfly.common.annotation.NotNull;
-import sun.misc.Contended;
 
 /**
  * A task-or-thread queue backed thread pool executor service.  Tasks are added in a FIFO manner, and consumers in a LIFO manner.
@@ -68,7 +67,6 @@ import sun.misc.Contended;
  *
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
-@Contended
 public final class EnhancedQueueExecutor extends AbstractExecutorService implements ManageableThreadPoolExecutorService {
     static {
         Version.getVersionString();
@@ -2036,7 +2034,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // Node classes
     // =======================================================
 
-    @Contended
     abstract static class QNode {
         // in 9, use VarHandle
         private static final AtomicReferenceFieldUpdater<QNode, QNode> nextUpdater = AtomicReferenceFieldUpdater.newUpdater(QNode.class, QNode.class, "next");
@@ -2061,7 +2058,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         }
     }
 
-    @Contended
     static final class PoolThreadNode extends QNode {
         private final Thread thread;
 
@@ -2093,7 +2089,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         }
     }
 
-    @Contended
     static final class TerminateWaiterNode extends QNode {
         private volatile Thread thread;
 
@@ -2117,7 +2112,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         }
     }
 
-    @Contended
     static final class TaskNode extends QNode {
         volatile Runnable task;
 
