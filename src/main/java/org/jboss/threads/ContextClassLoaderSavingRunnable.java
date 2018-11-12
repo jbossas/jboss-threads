@@ -37,4 +37,8 @@ class ContextClassLoaderSavingRunnable implements Runnable {
             JBossExecutors.setContextClassLoader(currentThread, old);
         }
     }
+
+    public String toString() {
+        return "Context class loader saving " + delegate.toString();
+    }
 }

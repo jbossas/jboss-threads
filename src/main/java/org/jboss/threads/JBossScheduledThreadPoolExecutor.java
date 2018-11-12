@@ -24,30 +24,33 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.jboss.threads.management.ThreadPoolExecutorMBean;
 
-public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolExecutor implements ThreadPoolExecutorMBean, ShutdownListenable {
+public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolExecutor {
 
-    private final SimpleShutdownListenable shutdownListenable = new SimpleShutdownListenable();
     private final AtomicInteger rejectCount = new AtomicInteger();
+    private final Runnable terminationTask;
 
-    public JBossScheduledThreadPoolExecutor(int corePoolSize) {
+    public JBossScheduledThreadPoolExecutor(int corePoolSize, final Runnable terminationTask) {
         super(corePoolSize);
+        this.terminationTask = terminationTask;
         setRejectedExecutionHandler(super.getRejectedExecutionHandler());
     }
 
-    public JBossScheduledThreadPoolExecutor(int corePoolSize, ThreadFactory threadFactory) {
+    public JBossScheduledThreadPoolExecutor(int corePoolSize, ThreadFactory threadFactory, final Runnable terminationTask) {
         super(corePoolSize, threadFactory);
+        this.terminationTask = terminationTask;
         setRejectedExecutionHandler(super.getRejectedExecutionHandler());
     }
 
-    public JBossScheduledThreadPoolExecutor(int corePoolSize, RejectedExecutionHandler handler) {
+    public JBossScheduledThreadPoolExecutor(int corePoolSize, RejectedExecutionHandler handler, final Runnable terminationTask) {
         super(corePoolSize);
+        this.terminationTask = terminationTask;
         setRejectedExecutionHandler(handler);
     }
 
-    public JBossScheduledThreadPoolExecutor(int corePoolSize, ThreadFactory threadFactory, RejectedExecutionHandler handler) {
+    public JBossScheduledThreadPoolExecutor(int corePoolSize, ThreadFactory threadFactory, RejectedExecutionHandler handler, final Runnable terminationTask) {
         super(corePoolSize, threadFactory);
+        this.terminationTask = terminationTask;
         setRejectedExecutionHandler(handler);
     }
 
@@ -98,13 +101,8 @@ public final class JBossScheduledThreadPoolExecutor extends ScheduledThreadPoolE
         return this.getQueue().size();
     }
 
-    /** {@inheritDoc} */
-    public <A> void addShutdownListener(final EventListener<A> shutdownListener, final A attachment) {
-        shutdownListenable.addShutdownListener(shutdownListener, attachment);
-    }
-
     protected void terminated() {
-        shutdownListenable.shutdown();
+        terminationTask.run();
     }
 
     private final class CountingRejectHandler implements RejectedExecutionHandler {

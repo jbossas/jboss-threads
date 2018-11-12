@@ -209,26 +209,14 @@ public class JBossThread extends Thread {
      * @param task the task to run
      */
     public static void executeWithInterruptDeferred(final Runnable task) {
-        executeWithInterruptDeferred(JBossExecutors.directExecutor(), task);
-    }
-
-    /**
-     * Defer interrupts for the duration of some task.  Once the task is complete, any deferred interrupt will be
-     * delivered to the thread, thus the thread interrupt status should be checked upon return.  If the current thread
-     * is not a {@code JBossThread}, the task is simply run as-is.
-     *
-     * @param directExecutor the task executor to use
-     * @param task the task to run
-     */
-    public static void executeWithInterruptDeferred(final DirectExecutor directExecutor, final Runnable task) {
         final JBossThread thread = currentThread();
         if (registerDeferral(thread)) try {
-            directExecutor.execute(task);
+            task.run();
         } finally {
             unregisterDeferral(thread);
         } else {
             // already deferred
-            directExecutor.execute(task);
+            task.run();
         }
     }
 

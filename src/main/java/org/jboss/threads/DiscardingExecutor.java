@@ -18,7 +18,9 @@
 
 package org.jboss.threads;
 
-class DiscardingExecutor implements DirectExecutor {
+import java.util.concurrent.Executor;
+
+class DiscardingExecutor implements Executor {
     static final DiscardingExecutor INSTANCE = new DiscardingExecutor();
 
     private DiscardingExecutor() {

@@ -18,9 +18,11 @@
 
 package org.jboss.threads;
 
-class SimpleDirectExecutor implements DirectExecutor {
+import java.util.concurrent.Executor;
 
-    static final DirectExecutor INSTANCE = new SimpleDirectExecutor();
+class SimpleDirectExecutor implements Executor {
+
+    static final SimpleDirectExecutor INSTANCE = new SimpleDirectExecutor();
 
     private SimpleDirectExecutor() {
     }

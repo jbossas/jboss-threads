@@ -60,10 +60,6 @@ class DelegatingExecutorService extends AbstractExecutorService implements Execu
         throw Messages.msg.notAllowedContainerManaged("shutdownNow");
     }
 
-    public static ExecutorService directExecutorService() {
-        return new DelegatingExecutorService(JBossExecutors.directExecutor());
-    }
-
     public String toString() {
         return String.format("%s -> %s", super.toString(), delegate);
     }

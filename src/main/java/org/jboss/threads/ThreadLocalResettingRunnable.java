@@ -1,6 +1,6 @@
 /*
  * JBoss, Home of Professional Open Source.
- * Copyright 2017 Red Hat, Inc., and individual contributors
+ * Copyright 2018 Red Hat, Inc., and individual contributors
  * as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,9 +21,7 @@ package org.jboss.threads;
 import java.lang.reflect.Field;
 import java.security.AccessController;
 
-final class ThreadLocalResetter implements Runnable {
-    private static final ThreadLocalResetter INSTANCE = new ThreadLocalResetter();
-
+final class ThreadLocalResettingRunnable extends DelegatingRunnable {
     private static final long threadLocalMapOffs;
     private static final long inheritableThreadLocalMapOffs;
 
@@ -34,17 +32,18 @@ final class ThreadLocalResetter implements Runnable {
         inheritableThreadLocalMapOffs = inheritableThreadLocals == null ? 0 : JBossExecutors.unsafe.objectFieldOffset(inheritableThreadLocals);
     }
 
-    static ThreadLocalResetter getInstance() {
-        return INSTANCE;
-    }
-
-    private ThreadLocalResetter() {
+    ThreadLocalResettingRunnable(final Runnable delegate) {
+        super(delegate);
     }
 
     public void run() {
-        final Thread thread = Thread.currentThread();
-        if (threadLocalMapOffs != 0) JBossExecutors.unsafe.putObject(thread, threadLocalMapOffs, null);
-        if (inheritableThreadLocalMapOffs != 0) JBossExecutors.unsafe.putObject(thread, inheritableThreadLocalMapOffs, null);
+        try {
+            super.run();
+        } finally {
+            final Thread thread = Thread.currentThread();
+            if (threadLocalMapOffs != 0) JBossExecutors.unsafe.putObject(thread, threadLocalMapOffs, null);
+            if (inheritableThreadLocalMapOffs != 0) JBossExecutors.unsafe.putObject(thread, inheritableThreadLocalMapOffs, null);
+        }
     }
 
     public String toString() {

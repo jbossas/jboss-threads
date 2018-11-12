@@ -25,10 +25,6 @@ class DelegatingRunnable implements Runnable {
         this.delegate = delegate;
     }
 
-    protected Runnable getDelegate() {
-        return delegate;
-    }
-
     public void run() {
         delegate.run();
     }

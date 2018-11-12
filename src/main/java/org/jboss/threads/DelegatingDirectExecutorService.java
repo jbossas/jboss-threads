@@ -18,11 +18,14 @@
 
 package org.jboss.threads;
 
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+
 /**
  * A {@code DirectExecutor} version of {@code ProtectedExecutorService}.
  */
-class DelegatingDirectExecutorService extends DelegatingExecutorService implements DirectExecutorService {
-    DelegatingDirectExecutorService(final DirectExecutor delegate) {
+class DelegatingDirectExecutorService extends DelegatingExecutorService implements ExecutorService {
+    DelegatingDirectExecutorService(final Executor delegate) {
         super(delegate);
     }
 }

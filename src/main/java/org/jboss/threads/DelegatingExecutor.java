@@ -31,10 +31,6 @@ class DelegatingExecutor implements Executor {
         this.delegate = delegate;
     }
 
-    protected Executor getDelegate() {
-        return delegate;
-    }
-
     /**
      * Execute a task by passing it to the delegate executor.
      *
