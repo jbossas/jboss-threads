@@ -46,7 +46,6 @@ import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
@@ -169,12 +168,12 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     /**
      * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
      */
-    final Lock tailLock = createLock();
+    final ExtendedLock tailLock = createLock();
 
     /**
      * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
      */
-    final Lock headLock = COMBINED_LOCK ? tailLock : createLock();
+    final ExtendedLock headLock = COMBINED_LOCK ? tailLock : createLock();
 
     // =======================================================
     // Immutable configuration fields
@@ -1964,12 +1963,12 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // Locks
     // =======================================================
 
-    private static Lock createLock() {
-        return new ReentrantLock();
+    private static ExtendedLock createLock() {
+        return new ExtendedReentrantLock();
     }
 
-    private static boolean currentThreadHolds(final Lock lock) {
-        return ((ReentrantLock) lock).isHeldByCurrentThread();
+    private static boolean currentThreadHolds(final ExtendedLock lock) {
+        return lock.isHeldByCurrentThread();
     }
 
     // =======================================================
