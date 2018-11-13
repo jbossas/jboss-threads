@@ -33,7 +33,6 @@ import java.util.Collections;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -50,7 +49,6 @@ import javax.management.ObjectName;
 import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 import org.wildfly.common.Assert;
-import org.wildfly.common.annotation.NotNull;
 
 /**
  * A task-or-thread queue backed thread pool executor service.  Tasks are added in a FIFO manner, and consumers in a LIFO manner.
@@ -64,7 +62,7 @@ import org.wildfly.common.annotation.NotNull;
  *
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
-public final class EnhancedQueueExecutor extends AbstractExecutorService implements ManageableThreadPoolExecutorService {
+public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 implements ManageableThreadPoolExecutorService {
     static {
         Version.getVersionString();
     }
@@ -135,23 +133,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      */
     static final boolean NO_QUEUE_LIMIT = readBooleanProperty("unlimited-queue", false);
     /**
-     * Establish a combined head/tail lock.
-     */
-    static final boolean COMBINED_LOCK = readBooleanProperty("combined-lock", false);
-    /**
-     * Attempt to lock frequently-contended operations on the list tail.  This defaults to {@code true} because
-     * moderate contention among 8 CPUs can result in thousands of spin misses per execution.
-     */
-    static final boolean TAIL_LOCK = COMBINED_LOCK || readBooleanProperty("tail-lock", true);
-    /**
-     * Attempt to lock frequently-contended operations on the list head.
-     */
-    static final boolean HEAD_LOCK = COMBINED_LOCK || readBooleanProperty("head-lock", true);
-    /**
-     * Use a spin lock for the head lock.
-     */
-    static final boolean HEAD_SPIN = readBooleanProperty("head-spin", true);
-    /**
      * Set the default value for whether an mbean is to be auto-registered for the thread pool.
      */
     static final boolean REGISTER_MBEAN = readBooleanProperty("register-mbean", true);
@@ -161,20 +142,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     static final Executor DEFAULT_HANDLER = JBossExecutors.rejectingExecutor();
-
-    // =======================================================
-    // Locks
-    // =======================================================
-
-    /**
-     * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
-     */
-    final ExtendedLock tailLock = TAIL_LOCK || COMBINED_LOCK ? Locks.reentrantLock() : null;
-
-    /**
-     * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
-     */
-    final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? HEAD_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
 
     // =======================================================
     // Immutable configuration fields
@@ -206,22 +173,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     /**
-     * The node <em>preceding</em> the head node; this field is not {@code null}.  This is
-     * the removal point for tasks (and the insertion point for waiting threads).
-     */
-    @NotNull
-    @SuppressWarnings("unused") // used by field updater
-    volatile TaskNode head;
-
-    /**
-     * The node <em>preceding</em> the tail node; this field is not {@code null}.  This
-     * is the insertion point for tasks (and the removal point for waiting threads).
-     */
-    @NotNull
-    @SuppressWarnings("unused") // used by field updater
-    volatile TaskNode tail;
-
-    /**
      * The linked list of threads waiting for termination of this thread pool.
      */
     @SuppressWarnings("unused") // used by field updater
@@ -236,21 +187,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      */
     @SuppressWarnings("unused") // used by field updater
     volatile long queueSize;
-
-    /**
-     * Active consumers:
-     * <ul>
-     *     <li>Bit 00..19: current number of running threads</li>
-     *     <li>Bit 20..39: core pool size</li>
-     *     <li>Bit 40..59: maximum pool size</li>
-     *     <li>Bit 60: 1 = allow core thread timeout; 0 = disallow core thread timeout</li>
-     *     <li>Bit 61: 1 = shutdown requested; 0 = shutdown not requested</li>
-     *     <li>Bit 62: 1 = shutdown task interrupt requested; 0 = interrupt not requested</li>
-     *     <li>Bit 63: 1 = shutdown complete; 0 = shutdown not complete</li>
-     * </ul>
-     */
-    @SuppressWarnings("unused") // used by field updater
-    volatile long threadStatus;
 
     /**
      * The thread keep-alive timeout value.
@@ -310,12 +246,9 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // Updaters
     // =======================================================
 
-    private static final long headOffset;
-    private static final long tailOffset;
     private static final long terminationWaitersOffset;
 
     private static final long queueSizeOffset;
-    private static final long threadStatusOffset;
 
     private static final long peakThreadCountOffset;
     private static final long activeCountOffset;
@@ -325,12 +258,9 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     static {
         try {
-            headOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("head"));
-            tailOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("tail"));
             terminationWaitersOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("terminationWaiters"));
 
             queueSizeOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("queueSize"));
-            threadStatusOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("threadStatus"));
 
             peakThreadCountOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("peakThreadCount"));
             activeCountOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("activeCount"));
@@ -389,6 +319,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     static volatile int sequence = 1;
 
     EnhancedQueueExecutor(final Builder builder) {
+        super();
         this.acc = getContext();
         int maxSize = builder.getMaximumPoolSize();
         int coreSize = Math.min(builder.getCorePoolSize(), maxSize);
@@ -399,7 +330,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         this.growthResistance = builder.getGrowthResistance();
         final long keepAliveTime = builder.getKeepAliveTime(TimeUnit.NANOSECONDS);
         // initial dead node
-        head = tail = new TaskNode(null);
         // thread stat
         threadStatus = withCoreSize(withMaxSize(withAllowCoreTimeout(0L, builder.allowsCoreThreadTimeOut()), maxSize), coreSize);
         timeoutNanos = max(1L, keepAliveTime);
@@ -1825,14 +1755,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         unsafe.getAndAddInt(this, activeCountOffset, -1);
     }
 
-    boolean compareAndSetThreadStatus(final long expect, final long update) {
-        return unsafe.compareAndSwapLong(this, threadStatusOffset, expect, update);
-    }
-
-    boolean compareAndSetHead(final TaskNode expect, final TaskNode update) {
-        return unsafe.compareAndSwapObject(this, headOffset, expect, update);
-    }
-
     boolean compareAndSetPeakThreadCount(final int expect, final int update) {
         return unsafe.compareAndSwapInt(this, peakThreadCountOffset, expect, update);
     }
@@ -1843,10 +1765,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     boolean compareAndSetQueueSize(final long expect, final long update) {
         return unsafe.compareAndSwapLong(this, queueSizeOffset, expect, update);
-    }
-
-    void compareAndSetTail(final TaskNode expect, final TaskNode update) {
-        unsafe.compareAndSwapObject(this, tailOffset, expect, update);
     }
 
     boolean compareAndSetTerminationWaiters(final Waiter expect, final Waiter update) {
@@ -1992,27 +1910,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
     // Static configuration
     // =======================================================
-
-    private static boolean readBooleanProperty(String name, boolean defVal) {
-        return Boolean.parseBoolean(readProperty(name, Boolean.toString(defVal)));
-    }
-
-    private static String readProperty(String name, String defVal) {
-        final SecurityManager sm = System.getSecurityManager();
-        if (sm != null) {
-            return doPrivileged(new PrivilegedAction<String>() {
-                public String run() {
-                    return readPropertyRaw(name, defVal);
-                }
-            });
-        } else {
-            return readPropertyRaw(name, defVal);
-        }
-    }
-
-    private static String readPropertyRaw(final String name, final String defVal) {
-        return System.getProperty("jboss.threads.eqe." + name, defVal);
-    }
 
     // =======================================================
     // Utilities
