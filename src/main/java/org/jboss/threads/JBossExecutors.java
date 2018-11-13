@@ -43,8 +43,8 @@ public final class JBossExecutors {
 
     private static final RuntimePermission COPY_CONTEXT_CLASSLOADER_PERMISSION = new RuntimePermission("copyClassLoader");
 
-    private static final ExecutorService REJECTING_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(RejectingExecutor.INSTANCE);
-    private static final ExecutorService DISCARDING_EXECUTOR_SERVICE = new DelegatingDirectExecutorService(DiscardingExecutor.INSTANCE);
+    private static final ExecutorService REJECTING_EXECUTOR_SERVICE = new DelegatingExecutorService(RejectingExecutor.INSTANCE);
+    private static final ExecutorService DISCARDING_EXECUTOR_SERVICE = new DelegatingExecutorService(DiscardingExecutor.INSTANCE);
 
     // ==================================================
     // DIRECT EXECUTORS
