@@ -23,6 +23,7 @@ import static java.lang.Thread.currentThread;
 import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
 import static java.util.concurrent.locks.LockSupport.*;
+import static org.jboss.threads.JBossExecutors.unsafe;
 
 import java.lang.management.ManagementFactory;
 import java.security.AccessControlContext;
@@ -40,10 +41,6 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
-import java.util.concurrent.atomic.AtomicLongFieldUpdater;
-import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.Lock;
 
@@ -309,16 +306,37 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // Updaters
     // =======================================================
 
-    private static final AtomicReferenceFieldUpdater<EnhancedQueueExecutor, TaskNode> headUpdater = AtomicReferenceFieldUpdater.newUpdater(EnhancedQueueExecutor.class, TaskNode.class, "head");
-    private static final AtomicReferenceFieldUpdater<EnhancedQueueExecutor, TaskNode> tailUpdater = AtomicReferenceFieldUpdater.newUpdater(EnhancedQueueExecutor.class, TaskNode.class, "tail");
-    private static final AtomicReferenceFieldUpdater<EnhancedQueueExecutor, Waiter> terminationWaitersUpdater = AtomicReferenceFieldUpdater.newUpdater(EnhancedQueueExecutor.class, Waiter.class, "terminationWaiters");
+    private static final long headOffset;
+    private static final long tailOffset;
+    private static final long terminationWaitersOffset;
 
-    private static final AtomicLongFieldUpdater<EnhancedQueueExecutor> queueSizeUpdater = AtomicLongFieldUpdater.newUpdater(EnhancedQueueExecutor.class, "queueSize");
-    private static final AtomicLongFieldUpdater<EnhancedQueueExecutor> threadStatusUpdater = AtomicLongFieldUpdater.newUpdater(EnhancedQueueExecutor.class, "threadStatus");
+    private static final long queueSizeOffset;
+    private static final long threadStatusOffset;
 
-    private static final AtomicIntegerFieldUpdater<EnhancedQueueExecutor> peakThreadCountUpdater = AtomicIntegerFieldUpdater.newUpdater(EnhancedQueueExecutor.class, "peakThreadCount");
-    private static final AtomicIntegerFieldUpdater<EnhancedQueueExecutor> activeCountUpdater = AtomicIntegerFieldUpdater.newUpdater(EnhancedQueueExecutor.class, "activeCount");
-    private static final AtomicIntegerFieldUpdater<EnhancedQueueExecutor> peakQueueSizeUpdater = AtomicIntegerFieldUpdater.newUpdater(EnhancedQueueExecutor.class, "peakQueueSize");
+    private static final long peakThreadCountOffset;
+    private static final long activeCountOffset;
+    private static final long peakQueueSizeOffset;
+
+    private static final long sequenceOffset;
+
+    static {
+        try {
+            headOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("head"));
+            tailOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("tail"));
+            terminationWaitersOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("terminationWaiters"));
+
+            queueSizeOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("queueSize"));
+            threadStatusOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("threadStatus"));
+
+            peakThreadCountOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("peakThreadCount"));
+            activeCountOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("activeCount"));
+            peakQueueSizeOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("peakQueueSize"));
+
+            sequenceOffset = unsafe.staticFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("sequence"));
+        } catch (NoSuchFieldException e) {
+            throw new NoSuchFieldError(e.getMessage());
+        }
+    }
 
     // =======================================================
     // Thread state field constants
@@ -364,7 +382,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // Constructor
     // =======================================================
 
-    static final AtomicInteger sequence = new AtomicInteger(1);
+    static volatile int sequence = 1;
 
     EnhancedQueueExecutor(final Builder builder) {
         this.acc = getContext();
@@ -385,7 +403,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         mxBean = new MXBeanImpl();
         if (builder.isRegisterMBean()) {
             final String configuredName = builder.getMBeanName();
-            final String finalName = configuredName != null ? configuredName : "threadpool-" + sequence.getAndIncrement();
+            final String finalName = configuredName != null ? configuredName : "threadpool-" + unsafe.getAndAddInt(null, sequenceOffset, 1);
             handle = doPrivileged(new PrivilegedAction<ObjectInstance>() {
                 public ObjectInstance run() {
                     try {
@@ -1796,43 +1814,43 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     void incrementActiveCount() {
-        activeCountUpdater.incrementAndGet(this);
+        unsafe.getAndAddInt(this, activeCountOffset, 1);
     }
 
     void decrementActiveCount() {
-        activeCountUpdater.decrementAndGet(this);
+        unsafe.getAndAddInt(this, activeCountOffset, -1);
     }
 
     boolean compareAndSetThreadStatus(final long expect, final long update) {
-        return threadStatusUpdater.compareAndSet(this, expect, update);
+        return unsafe.compareAndSwapLong(this, threadStatusOffset, expect, update);
     }
 
     boolean compareAndSetHead(final TaskNode expect, final TaskNode update) {
-        return headUpdater.compareAndSet(this, expect, update);
+        return unsafe.compareAndSwapObject(this, headOffset, expect, update);
     }
 
     boolean compareAndSetPeakThreadCount(final int expect, final int update) {
-        return peakThreadCountUpdater.compareAndSet(this, expect, update);
+        return unsafe.compareAndSwapInt(this, peakThreadCountOffset, expect, update);
     }
 
     boolean compareAndSetPeakQueueSize(final int expect, final int update) {
-        return peakQueueSizeUpdater.compareAndSet(this, expect, update);
+        return unsafe.compareAndSwapInt(this, peakQueueSizeOffset, expect, update);
     }
 
     boolean compareAndSetQueueSize(final long expect, final long update) {
-        return queueSizeUpdater.compareAndSet(this, expect, update);
+        return unsafe.compareAndSwapLong(this, queueSizeOffset, expect, update);
     }
 
     void compareAndSetTail(final TaskNode expect, final TaskNode update) {
-        tailUpdater.compareAndSet(this, expect, update);
+        unsafe.compareAndSwapObject(this, tailOffset, expect, update);
     }
 
     boolean compareAndSetTerminationWaiters(final Waiter expect, final Waiter update) {
-        return terminationWaitersUpdater.compareAndSet(this, expect, update);
+        return unsafe.compareAndSwapObject(this, terminationWaitersOffset, expect, update);
     }
 
     Waiter getAndSetTerminationWaiters(final Waiter update) {
-        return terminationWaitersUpdater.getAndSet(this, update);
+        return (Waiter) unsafe.getAndSetObject(this, terminationWaitersOffset, update);
     }
 
     // =======================================================
@@ -2055,8 +2073,15 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     abstract static class QNode {
-        // in 9, use VarHandle
-        private static final AtomicReferenceFieldUpdater<QNode, QNode> nextUpdater = AtomicReferenceFieldUpdater.newUpdater(QNode.class, QNode.class, "next");
+        private static final long nextOffset;
+
+        static {
+            try {
+                nextOffset = unsafe.objectFieldOffset(QNode.class.getDeclaredField("next"));
+            } catch (NoSuchFieldException e) {
+                throw new NoSuchFieldError(e.getMessage());
+            }
+        }
 
         @SuppressWarnings("unused")
         private volatile QNode next;
@@ -2066,25 +2091,33 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         }
 
         boolean compareAndSetNext(QNode expect, QNode update) {
-            return nextUpdater.compareAndSet(this, expect, update);
+            return unsafe.compareAndSwapObject(this, nextOffset, expect, update);
         }
 
         QNode getNext() {
-            return nextUpdater.get(this);
+            return next;
         }
 
         QNode getAndSetNext(final QNode node) {
-            return nextUpdater.getAndSet(this, node);
+            return (QNode) unsafe.getAndSetObject(this, nextOffset, node);
         }
     }
 
     static final class PoolThreadNode extends QNode {
+        private static final long taskOffset;
+
+        static {
+            try {
+                taskOffset = unsafe.objectFieldOffset(PoolThreadNode.class.getDeclaredField("task"));
+            } catch (NoSuchFieldException e) {
+                throw new NoSuchFieldError(e.getMessage());
+            }
+        }
+
         private final Thread thread;
 
         @SuppressWarnings("unused")
         private volatile Runnable task;
-
-        private static final AtomicReferenceFieldUpdater<PoolThreadNode, Runnable> taskUpdater = AtomicReferenceFieldUpdater.newUpdater(PoolThreadNode.class, Runnable.class, "task");
 
         PoolThreadNode(final PoolThreadNode next, final Thread thread) {
             super(next);
@@ -2097,11 +2130,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         }
 
         boolean compareAndSetTask(final Runnable expect, final Runnable update) {
-            return taskUpdater.compareAndSet(this, expect, update);
+            return unsafe.compareAndSwapObject(this, taskOffset, expect, update);
         }
 
         Runnable getTask() {
-            return taskUpdater.get(this);
+            return task;
         }
 
         PoolThreadNode getNext() {
