@@ -368,8 +368,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // Marker objects
     // =======================================================
 
-    static final QNode TERMINATE_REQUESTED = new TerminateWaiterNode(null);
-    static final QNode TERMINATE_COMPLETE = new TerminateWaiterNode(null);
+    static final QNode TERMINATE_REQUESTED = new TerminateWaiterNode();
+    static final QNode TERMINATE_COMPLETE = new TerminateWaiterNode();
 
     static final Waiter TERMINATE_COMPLETE_WAITER = new Waiter(null);
 
@@ -1794,7 +1794,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             unpark(waiters.getThread());
             waiters = waiters.getNext();
         }
-        tail.getAndSetNext(TERMINATE_COMPLETE);
+        tail.setNext(TERMINATE_COMPLETE);
         final ObjectInstance handle = this.handle;
         if (handle != null) {
             doPrivileged(new PrivilegedAction<Void>() {
@@ -2098,8 +2098,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             return next;
         }
 
-        QNode getAndSetNext(final QNode node) {
-            return (QNode) unsafe.getAndSetObject(this, nextOffset, node);
+        void setNext(final QNode node) {
+            next = node;
         }
     }
 
@@ -2143,25 +2143,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     }
 
     static final class TerminateWaiterNode extends QNode {
-        private volatile Thread thread;
-
-        TerminateWaiterNode(final Thread thread) {
-            // always start with a {@code null} next
+        TerminateWaiterNode() {
             super(null);
-            this.thread = thread;
-        }
-
-        Thread getAndClearThread() {
-            // doesn't have to be particularly atomic
-            try {
-                return thread;
-            } finally {
-                thread = null;
-            }
-        }
-
-        TerminateWaiterNode getNext() {
-            return (TerminateWaiterNode) super.getNext();
         }
     }
 
