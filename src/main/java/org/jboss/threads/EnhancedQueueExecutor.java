@@ -168,12 +168,12 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     /**
      * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
      */
-    final ExtendedLock tailLock = createLock();
+    final ExtendedLock tailLock = TAIL_LOCK || COMBINED_LOCK ? Locks.reentrantLock() : null;
 
     /**
      * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
      */
-    final ExtendedLock headLock = COMBINED_LOCK ? tailLock : createLock();
+    final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? Locks.reentrantLock() : null;
 
     // =======================================================
     // Immutable configuration fields
@@ -1962,10 +1962,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
     // Locks
     // =======================================================
-
-    private static ExtendedLock createLock() {
-        return new ExtendedReentrantLock();
-    }
 
     private static boolean currentThreadHolds(final ExtendedLock lock) {
         return lock.isHeldByCurrentThread();
