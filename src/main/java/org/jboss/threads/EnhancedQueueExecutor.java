@@ -148,6 +148,10 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      */
     static final boolean HEAD_LOCK = COMBINED_LOCK || readBooleanProperty("head-lock", true);
     /**
+     * Use a spin lock for the head lock.
+     */
+    static final boolean HEAD_SPIN = readBooleanProperty("head-spin", true);
+    /**
      * Set the default value for whether an mbean is to be auto-registered for the thread pool.
      */
     static final boolean REGISTER_MBEAN = readBooleanProperty("register-mbean", true);
@@ -170,7 +174,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     /**
      * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
      */
-    final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? Locks.reentrantLock() : null;
+    final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? HEAD_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
 
     // =======================================================
     // Immutable configuration fields
