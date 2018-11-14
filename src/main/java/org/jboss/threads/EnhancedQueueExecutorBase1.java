@@ -47,6 +47,11 @@ abstract class EnhancedQueueExecutorBase1 extends EnhancedQueueExecutorBase0 {
     static final boolean COMBINED_LOCK = readBooleanProperty("combined-lock", false);
 
     /**
+     * Use a spin lock for the tail lock.
+     */
+    static final boolean TAIL_SPIN = ! COMBINED_LOCK && readBooleanProperty("tail-spin", false);
+
+    /**
      * Attempt to lock frequently-contended operations on the list tail.  This defaults to {@code true} because
      * moderate contention among 8 CPUs can result in thousands of spin misses per execution.
      */
@@ -55,7 +60,7 @@ abstract class EnhancedQueueExecutorBase1 extends EnhancedQueueExecutorBase0 {
     /**
      * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
      */
-    final ExtendedLock tailLock = TAIL_LOCK || COMBINED_LOCK ? Locks.reentrantLock() : null;
+    final ExtendedLock tailLock = TAIL_LOCK ? TAIL_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
 
     // =======================================================
     // Current state fields
