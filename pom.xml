@@ -62,6 +62,7 @@
 
         <jdk.min.version>9</jdk.min.version>
         <java8.jdk-misc>true</java8.jdk-misc>
+        <javadoc.additional.params>--release=8</javadoc.additional.params>
     </properties>
 
     <dependencies>
