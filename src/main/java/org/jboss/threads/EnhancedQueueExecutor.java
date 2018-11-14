@@ -254,6 +254,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     private static final long activeCountOffset;
     private static final long peakQueueSizeOffset;
 
+    private static final Object sequenceBase;
     private static final long sequenceOffset;
 
     static {
@@ -266,6 +267,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             activeCountOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("activeCount"));
             peakQueueSizeOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("peakQueueSize"));
 
+            sequenceBase = unsafe.staticFieldBase(EnhancedQueueExecutor.class.getDeclaredField("sequence"));
             sequenceOffset = unsafe.staticFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("sequence"));
         } catch (NoSuchFieldException e) {
             throw new NoSuchFieldError(e.getMessage());
@@ -337,7 +339,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         mxBean = new MXBeanImpl();
         if (builder.isRegisterMBean()) {
             final String configuredName = builder.getMBeanName();
-            final String finalName = configuredName != null ? configuredName : "threadpool-" + unsafe.getAndAddInt(null, sequenceOffset, 1);
+            final String finalName = configuredName != null ? configuredName : "threadpool-" + unsafe.getAndAddInt(sequenceBase, sequenceOffset, 1);
             handle = doPrivileged(new PrivilegedAction<ObjectInstance>() {
                 public ObjectInstance run() {
                     try {
