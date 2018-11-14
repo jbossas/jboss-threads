@@ -576,6 +576,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          * Set the maximum queue size.
          *
          * @param maxQueueSize the maximum queue size (must be ≥ 0)
+         * @return this builder
          * @see EnhancedQueueExecutor#setMaximumQueueSize(int)
          */
         public Builder setMaximumQueueSize(final int maxQueueSize) {
@@ -1124,7 +1125,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * Unless core threads are allowed to time out, threads will only exit if the current thread count exceeds the core
      * limit.
      *
-     * @param keepAliveTime the thread keep-alive time (must be > 0)
+     * @param keepAliveTime the thread keep-alive time (must be &gt; 0)
      * @param keepAliveUnits the unit in which the value is expressed (must not be {@code null})
      * @see Builder#setKeepAliveTime(long, TimeUnit) Builder.setKeepAliveTime()
      */
