@@ -340,20 +340,30 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         if (builder.isRegisterMBean()) {
             final String configuredName = builder.getMBeanName();
             final String finalName = configuredName != null ? configuredName : "threadpool-" + unsafe.getAndAddInt(sequenceBase, sequenceOffset, 1);
-            handle = doPrivileged(new PrivilegedAction<ObjectInstance>() {
-                public ObjectInstance run() {
-                    try {
-                        final Hashtable<String, String> table = new Hashtable<>();
-                        table.put("name", ObjectName.quote(finalName));
-                        table.put("type", "thread-pool");
-                        return ManagementFactory.getPlatformMBeanServer().registerMBean(mxBean, new ObjectName("jboss.threads", table));
-                    } catch (Throwable ignored) {
-                    }
-                    return null;
-                }
-            }, acc);
+            handle = doPrivileged(new MBeanRegisterAction(finalName, mxBean), acc);
         } else {
             handle = null;
+        }
+    }
+
+    static final class MBeanRegisterAction implements PrivilegedAction<ObjectInstance> {
+        private final String finalName;
+        private final MXBeanImpl mxBean;
+
+        MBeanRegisterAction(final String finalName, final MXBeanImpl mxBean) {
+            this.finalName = finalName;
+            this.mxBean = mxBean;
+        }
+
+        public ObjectInstance run() {
+            try {
+                final Hashtable<String, String> table = new Hashtable<>();
+                table.put("name", ObjectName.quote(finalName));
+                table.put("type", "thread-pool");
+                return ManagementFactory.getPlatformMBeanServer().registerMBean(mxBean, new ObjectName("jboss.threads", table));
+            } catch (Throwable ignored) {
+            }
+            return null;
         }
     }
 

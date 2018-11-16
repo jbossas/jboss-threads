@@ -18,6 +18,8 @@
 
 package org.jboss.threads;
 
+import javax.management.ObjectInstance;
+
 import com.oracle.svm.core.annotate.Alias;
 import com.oracle.svm.core.annotate.Substitute;
 import com.oracle.svm.core.annotate.TargetClass;
@@ -58,5 +60,14 @@ final class Substitutions {
 
     @TargetClass(className = "java.lang.ThreadLocal$ThreadLocalMap")
     static final class Target_java_lang_ThreadLocal_ThreadLocalMap {
+    }
+
+    @TargetClass(EnhancedQueueExecutor.MBeanRegisterAction.class)
+    static final class Target_EnhancedQueueExecutor_MBeanRegisterAction {
+
+        @Substitute
+        public ObjectInstance run() {
+            return null;
+        }
     }
 }
