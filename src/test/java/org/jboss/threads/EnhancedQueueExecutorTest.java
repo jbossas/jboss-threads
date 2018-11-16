@@ -4,6 +4,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import junit.framework.TestCase;
+import org.junit.Ignore;
 
 public class EnhancedQueueExecutorTest extends TestCase {
     private int coreSize = 3;
@@ -40,6 +41,7 @@ public class EnhancedQueueExecutorTest extends TestCase {
      *     <li>schedule x tasks, expect pool size = x immediately after</li>
      * </ul>
      */
+    @Ignore("https://issues.jboss.org/browse/JBTHR-67")
     public void testThreadReuse() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
@@ -67,6 +69,7 @@ public class EnhancedQueueExecutorTest extends TestCase {
      * @throws InterruptedException
      * @throws TimeoutException
      */
+    @Ignore("https://issues.jboss.org/browse/JBTHR-67")
     public void testKeepaliveTime() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
@@ -88,6 +91,7 @@ public class EnhancedQueueExecutorTest extends TestCase {
      * Test that max size setting is honored. Test that keepalive time is ignored when core threads are the same as max
      * threads and core thread time out is disabled.
      */
+    @Ignore("https://issues.jboss.org/browse/JBTHR-67")
     public void testKeepaliveTime2() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
@@ -108,6 +112,7 @@ public class EnhancedQueueExecutorTest extends TestCase {
     /**
      * Test the keepalive setting with core thread time out enabled.
      */
+    @Ignore("https://issues.jboss.org/browse/JBTHR-67")
     public void testKeepaliveTime3() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
