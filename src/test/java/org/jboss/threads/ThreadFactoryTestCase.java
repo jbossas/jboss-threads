@@ -80,13 +80,12 @@ public final class ThreadFactoryTestCase extends TestCase {
                             called.set(true);
                         }
                     });
+                    Thread.interrupted();
+                    latch.countDown();
                     try {
-                        latch.countDown();
-                        wait();
+                        for (;;) wait();
                     } catch (InterruptedException e) {
                         wasInterrupted.set(true);
-                    } finally {
-                        JBossThread.getAndSetInterruptHandler(old);
                     }
                 }
             }
