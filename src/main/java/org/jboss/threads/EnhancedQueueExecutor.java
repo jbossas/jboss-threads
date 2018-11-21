@@ -19,6 +19,7 @@
 package org.jboss.threads;
 
 import static java.lang.Math.max;
+import static java.lang.Math.min;
 import static java.lang.Thread.currentThread;
 import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
@@ -28,6 +29,8 @@ import static org.jboss.threads.JBossExecutors.unsafe;
 import java.lang.management.ManagementFactory;
 import java.security.AccessControlContext;
 import java.security.PrivilegedAction;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Hashtable;
@@ -324,17 +327,17 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         super();
         this.acc = getContext();
         int maxSize = builder.getMaximumPoolSize();
-        int coreSize = Math.min(builder.getCorePoolSize(), maxSize);
+        int coreSize = min(builder.getCorePoolSize(), maxSize);
         this.handoffExecutor = builder.getHandoffExecutor();
         this.exceptionHandler = builder.getExceptionHandler();
         this.threadFactory = builder.getThreadFactory();
         this.terminationTask = builder.getTerminationTask();
         this.growthResistance = builder.getGrowthResistance();
-        final long keepAliveTime = builder.getKeepAliveTime(TimeUnit.NANOSECONDS);
+        final Duration keepAliveTime = builder.getKeepAliveTime();
         // initial dead node
         // thread stat
         threadStatus = withCoreSize(withMaxSize(withAllowCoreTimeout(0L, builder.allowsCoreThreadTimeOut()), maxSize), coreSize);
-        timeoutNanos = max(1L, keepAliveTime);
+        timeoutNanos = TimeUtil.clampedPositiveNanos(keepAliveTime);
         queueSize = withMaxQueueSize(withCurrentQueueSize(0L, 0), builder.getMaximumQueueSize());
         mxBean = new MXBeanImpl();
         if (builder.isRegisterMBean()) {
@@ -382,8 +385,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         private Thread.UncaughtExceptionHandler exceptionHandler = JBossExecutors.loggingExceptionHandler();
         private int coreSize = 16;
         private int maxSize = 64;
-        private long keepAliveTime = 30;
-        private TimeUnit keepAliveUnits = TimeUnit.SECONDS;
+        private Duration keepAliveTime = Duration.ofSeconds(30);
         private float growthResistance;
         private boolean allowCoreTimeOut;
         private int maxQueueSize = Integer.MAX_VALUE;
@@ -494,13 +496,39 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          * Get the thread keep-alive time.  This is the amount of time (in the configured time unit) that idle threads
          * will wait for a task before exiting.
          *
+         * @return the thread keep-alive time duration
+         */
+        public Duration getKeepAliveTime() {
+            return keepAliveTime;
+        }
+
+        /**
+         * Get the thread keep-alive time.  This is the amount of time (in the configured time unit) that idle threads
+         * will wait for a task before exiting.
+         *
          * @param keepAliveUnits the time keepAliveUnits of the keep-alive time (must not be {@code null})
          * @return the thread keep-alive time
          * @see EnhancedQueueExecutor#getKeepAliveTime(TimeUnit)
+         * @deprecated Use {@link #getKeepAliveTime()} instead.
          */
+        @Deprecated
         public long getKeepAliveTime(TimeUnit keepAliveUnits) {
             Assert.checkNotNullParam("keepAliveUnits", keepAliveUnits);
-            return keepAliveUnits.convert(keepAliveTime, this.keepAliveUnits);
+            final long secondsPart = keepAliveUnits.convert(keepAliveTime.getSeconds(), TimeUnit.SECONDS);
+            final long nanoPart = keepAliveUnits.convert(keepAliveTime.getNano(), TimeUnit.NANOSECONDS);
+            final long sum = secondsPart + nanoPart;
+            return sum < 0 ? Long.MAX_VALUE : sum;
+        }
+
+        /**
+         * Set the thread keep-alive time.
+         *
+         * @param keepAliveTime the thread keep-alive time (must not be {@code null})
+         */
+        public Builder setKeepAliveTime(final Duration keepAliveTime) {
+            Assert.checkNotNullParam("keepAliveTime", keepAliveTime);
+            this.keepAliveTime = keepAliveTime;
+            return this;
         }
 
         /**
@@ -510,12 +538,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          * @param keepAliveUnits the time keepAliveUnits of the keep-alive time (must not be {@code null})
          * @return this builder
          * @see EnhancedQueueExecutor#setKeepAliveTime(long, TimeUnit)
+         * @deprecated Use {@link #setKeepAliveTime(Duration)} instead.
          */
+        @Deprecated
         public Builder setKeepAliveTime(final long keepAliveTime, final TimeUnit keepAliveUnits) {
             Assert.checkMinimumParameter("keepAliveTime", 1L, keepAliveTime);
             Assert.checkNotNullParam("keepAliveUnits", keepAliveUnits);
-            this.keepAliveTime = keepAliveTime;
-            this.keepAliveUnits = keepAliveUnits;
+            this.keepAliveTime = Duration.of(keepAliveTime, JDKSpecific.timeToTemporal(keepAliveUnits));
             return this;
         }
 
@@ -1124,10 +1153,24 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @param keepAliveUnits the unit in which the result should be expressed (must not be {@code null})
      * @return the amount of time (will be greater than zero)
      * @see Builder#getKeepAliveTime(TimeUnit) Builder.getKeepAliveTime()
+     * @deprecated Use {@link #getKeepAliveTime()} instead.
      */
+    @Deprecated
     public long getKeepAliveTime(TimeUnit keepAliveUnits) {
         Assert.checkNotNullParam("keepAliveUnits", keepAliveUnits);
         return keepAliveUnits.convert(timeoutNanos, TimeUnit.NANOSECONDS);
+    }
+
+    /**
+     * Get the thread keep-alive time.  This is the minimum length of time that idle threads should remain until they exit.
+     * Unless core threads are allowed to time out, threads will only exit if the current thread count exceeds the core
+     * limit.
+     *
+     * @return the amount of time (will be greater than zero)
+     * @see Builder#getKeepAliveTime() Builder.getKeepAliveTime()
+     */
+    public Duration getKeepAliveTime() {
+        return Duration.of(timeoutNanos, ChronoUnit.NANOS);
     }
 
     /**
@@ -1138,11 +1181,26 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @param keepAliveTime the thread keep-alive time (must be &gt; 0)
      * @param keepAliveUnits the unit in which the value is expressed (must not be {@code null})
      * @see Builder#setKeepAliveTime(long, TimeUnit) Builder.setKeepAliveTime()
+     * @deprecated Use {@link #setKeepAliveTime(Duration)} instead.
      */
+    @Deprecated
     public void setKeepAliveTime(final long keepAliveTime, final TimeUnit keepAliveUnits) {
         Assert.checkMinimumParameter("keepAliveTime", 1L, keepAliveTime);
         Assert.checkNotNullParam("keepAliveUnits", keepAliveUnits);
         timeoutNanos = max(1L, keepAliveUnits.toNanos(keepAliveTime));
+    }
+
+    /**
+     * Set the thread keep-alive time.  This is the minimum length of time that idle threads should remain until they exit.
+     * Unless core threads are allowed to time out, threads will only exit if the current thread count exceeds the core
+     * limit.
+     *
+     * @param keepAliveTime the thread keep-alive time (must not be {@code null})
+     * @see Builder#setKeepAliveTime(Duration) Builder.setKeepAliveTime()
+     */
+    public void setKeepAliveTime(final Duration keepAliveTime) {
+        Assert.checkNotNullParam("keepAliveTime", keepAliveTime);
+        timeoutNanos = TimeUtil.clampedPositiveNanos(keepAliveTime);
     }
 
     /**
@@ -2153,11 +2211,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         public long getKeepAliveTimeSeconds() {
-            return EnhancedQueueExecutor.this.getKeepAliveTime(TimeUnit.SECONDS);
+            return EnhancedQueueExecutor.this.getKeepAliveTime().getSeconds();
         }
 
         public void setKeepAliveTimeSeconds(final long seconds) {
-            EnhancedQueueExecutor.this.setKeepAliveTime(seconds, TimeUnit.SECONDS);
+            EnhancedQueueExecutor.this.setKeepAliveTime(Duration.of(seconds, ChronoUnit.SECONDS));
         }
 
         public int getMaximumQueueSize() {
