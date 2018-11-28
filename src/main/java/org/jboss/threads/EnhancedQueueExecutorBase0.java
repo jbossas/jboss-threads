@@ -38,8 +38,12 @@ abstract class EnhancedQueueExecutorBase0 extends AbstractExecutorService {
 
     EnhancedQueueExecutorBase0() {}
 
-    static boolean readBooleanProperty(String name, boolean defVal) {
-        return Boolean.parseBoolean(readProperty(name, Boolean.toString(defVal)));
+    static boolean readBooleanPropertyPrefixed(String name, boolean defVal) {
+        return Boolean.parseBoolean(readPropertyPrefixed(name, Boolean.toString(defVal)));
+    }
+
+    static String readPropertyPrefixed(String name, String defVal) {
+        return readProperty("jboss.threads.eqe." + name, defVal);
     }
 
     static String readProperty(String name, String defVal) {
@@ -55,7 +59,7 @@ abstract class EnhancedQueueExecutorBase0 extends AbstractExecutorService {
         }
     }
 
-    private static String readPropertyRaw(final String name, final String defVal) {
-        return System.getProperty("jboss.threads.eqe." + name, defVal);
+    static String readPropertyRaw(final String name, final String defVal) {
+        return System.getProperty(name, defVal);
     }
 }

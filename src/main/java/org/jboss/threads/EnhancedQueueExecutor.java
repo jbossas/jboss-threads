@@ -121,24 +121,28 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * This hint defaults to {@code false} but can be changed to {@code true} by setting the {@code jboss.threads.eqe.disable}
      * property to {@code true} before this class is initialized.
      */
-    public static final boolean DISABLE_HINT = readBooleanProperty("disable", false);
+    public static final boolean DISABLE_HINT = readBooleanPropertyPrefixed("disable", false);
 
     /**
      * Update the tail pointer opportunistically.
      */
-    static final boolean UPDATE_TAIL = readBooleanProperty("update-tail", false);
+    static final boolean UPDATE_TAIL = readBooleanPropertyPrefixed("update-tail", false);
     /**
      * Update the summary statistics.
      */
-    static final boolean UPDATE_STATISTICS = readBooleanProperty("statistics", true);
+    static final boolean UPDATE_STATISTICS = readBooleanPropertyPrefixed("statistics", true);
     /**
      * Suppress queue limit and size tracking for performance.
      */
-    static final boolean NO_QUEUE_LIMIT = readBooleanProperty("unlimited-queue", false);
+    static final boolean NO_QUEUE_LIMIT = readBooleanPropertyPrefixed("unlimited-queue", false);
     /**
      * Set the default value for whether an mbean is to be auto-registered for the thread pool.
      */
-    static final boolean REGISTER_MBEAN = readBooleanProperty("register-mbean", true);
+    static final boolean REGISTER_MBEAN = readBooleanPropertyPrefixed("register-mbean", true);
+    /**
+     * Set to enable or disable MBean registration.
+     */
+    static final boolean DISABLE_MBEAN = readBooleanPropertyPrefixed("register-mbean", readProperty("org.graalvm.nativeimage.imagecode", null) != null);
 
     // =======================================================
     // Constants
@@ -165,7 +169,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     /**
      * The MBean registration handle (if any).
      */
-    private final ObjectInstance handle;
+    private final Object handle;
     /**
      * The access control context of the creating thread.
      */
@@ -340,7 +344,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         timeoutNanos = TimeUtil.clampedPositiveNanos(keepAliveTime);
         queueSize = withMaxQueueSize(withCurrentQueueSize(0L, 0), builder.getMaximumQueueSize());
         mxBean = new MXBeanImpl();
-        if (builder.isRegisterMBean()) {
+        if (! DISABLE_MBEAN && builder.isRegisterMBean()) {
             final String configuredName = builder.getMBeanName();
             final String finalName = configuredName != null ? configuredName : "threadpool-" + unsafe.getAndAddInt(sequenceBase, sequenceOffset, 1);
             handle = doPrivileged(new MBeanRegisterAction(finalName, mxBean), acc);
@@ -1800,17 +1804,19 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             waiters = waiters.getNext();
         }
         tail.setNext(TERMINATE_COMPLETE);
-        final ObjectInstance handle = this.handle;
-        if (handle != null) {
-            doPrivileged(new PrivilegedAction<Void>() {
-                public Void run() {
-                    try {
-                        ManagementFactory.getPlatformMBeanServer().unregisterMBean(handle.getObjectName());
-                    } catch (Throwable ignored) {
+        if (! DISABLE_MBEAN) {
+            final Object handle = this.handle;
+            if (handle != null) {
+                doPrivileged(new PrivilegedAction<Void>() {
+                    public Void run() {
+                        try {
+                            ManagementFactory.getPlatformMBeanServer().unregisterMBean(((ObjectInstance)handle).getObjectName());
+                        } catch (Throwable ignored) {
+                        }
+                        return null;
                     }
-                    return null;
-                }
-            }, acc);
+                }, acc);
+            }
         }
     }
 

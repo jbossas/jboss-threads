@@ -43,11 +43,11 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
     /**
      * Attempt to lock frequently-contended operations on the list head.
      */
-    static final boolean HEAD_LOCK = COMBINED_LOCK || readBooleanProperty("head-lock", true);
+    static final boolean HEAD_LOCK = COMBINED_LOCK || readBooleanPropertyPrefixed("head-lock", true);
     /**
      * Use a spin lock for the head lock.
      */
-    static final boolean HEAD_SPIN = readBooleanProperty("head-spin", true);
+    static final boolean HEAD_SPIN = readBooleanPropertyPrefixed("head-spin", true);
     /**
      * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
      */
