@@ -39,7 +39,7 @@ interface Messages extends BasicLogger {
 
     // version
     @Message(value = "JBoss Threads version %s")
-    @LogMessage(level = Logger.Level.INFO)
+    @LogMessage(level = Logger.Level.DEBUG)
     void version(String version);
 
     // execution
