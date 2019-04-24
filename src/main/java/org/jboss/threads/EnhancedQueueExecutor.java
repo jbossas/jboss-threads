@@ -66,6 +66,8 @@ import org.wildfly.common.Assert;
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
 public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 implements ManageableThreadPoolExecutorService {
+    private static final Thread[] NO_THREADS = new Thread[0];
+
     static {
         Version.getVersionString();
     }
@@ -1355,6 +1357,16 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      */
     public int getPoolSize() {
         return currentSizeOf(threadStatus);
+    }
+
+    /**
+     * Get an array containing an approximate snapshot of the currently running threads in
+     * this executor.
+     *
+     * @return an array of running (unterminated) threads (not {@code null})
+     */
+    public Thread[] getRunningThreads() {
+        return runningThreads.toArray(NO_THREADS);
     }
 
     // =======================================================
