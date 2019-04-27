@@ -21,6 +21,9 @@ package org.jboss.threads;
 import static org.jboss.threads.JBossExecutors.unsafe;
 
 import org.wildfly.common.annotation.NotNull;
+import org.wildfly.common.lock.ExtendedLock;
+import org.wildfly.common.lock.SpinLock;
+import org.wildfly.common.lock.Locks;
 
 /**
  * EQE base class: head section.
