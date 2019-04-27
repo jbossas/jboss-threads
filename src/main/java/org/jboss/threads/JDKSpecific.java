@@ -28,10 +28,6 @@ import org.wildfly.common.Assert;
  */
 final class JDKSpecific {
 
-    static void onSpinWait() {
-        // no op on Java 8
-    }
-
     static TemporalUnit timeToTemporal(final TimeUnit timeUnit) {
         switch (timeUnit) {
             case NANOSECONDS: return ChronoUnit.NANOS;

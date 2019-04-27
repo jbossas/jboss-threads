@@ -25,10 +25,6 @@ import java.util.concurrent.TimeUnit;
  */
 final class JDKSpecific {
 
-    static void onSpinWait() {
-        Thread.onSpinWait();
-    }
-
     static TemporalUnit timeToTemporal(final TimeUnit timeUnit) {
         return timeUnit.toChronoUnit();
     }
