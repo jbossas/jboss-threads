@@ -44,7 +44,7 @@ final class Substitutions {
     static final class Target_ThreadLocalResettingRunnable_Resetter {
         @Substitute
         static void run() {
-            Target_java_lang_Thread thread = (Target_java_lang_Thread) (Object) Thread.currentThread();
+            Target_java_lang_Thread thread = Target_java_lang_Thread.class.cast(Thread.currentThread());
             thread.threadLocals = null;
             thread.inheritableThreadLocals = null;
         }
