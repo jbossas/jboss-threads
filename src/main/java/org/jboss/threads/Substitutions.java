@@ -20,34 +20,10 @@ package org.jboss.threads;
 
 import javax.management.ObjectInstance;
 
-import com.oracle.svm.core.annotate.Alias;
 import com.oracle.svm.core.annotate.Substitute;
 import com.oracle.svm.core.annotate.TargetClass;
 
 final class Substitutions {
-    @TargetClass(ThreadLocalResettingRunnable.Resetter.class)
-    @Substitute
-    static final class Target_ThreadLocalResettingRunnable_Resetter {
-        @Substitute
-        static void run() {
-            Target_java_lang_Thread thread = Target_java_lang_Thread.class.cast(Thread.currentThread());
-            thread.threadLocals = null;
-            thread.inheritableThreadLocals = null;
-        }
-    }
-
-    @TargetClass(Thread.class)
-    static final class Target_java_lang_Thread {
-        @Alias
-        Target_java_lang_ThreadLocal_ThreadLocalMap threadLocals;
-        @Alias
-        Target_java_lang_ThreadLocal_ThreadLocalMap inheritableThreadLocals;
-    }
-
-    @TargetClass(className = "java.lang.ThreadLocal$ThreadLocalMap")
-    static final class Target_java_lang_ThreadLocal_ThreadLocalMap {
-    }
-
     @TargetClass(EnhancedQueueExecutor.MBeanRegisterAction.class)
     static final class Target_EnhancedQueueExecutor_MBeanRegisterAction {
 
