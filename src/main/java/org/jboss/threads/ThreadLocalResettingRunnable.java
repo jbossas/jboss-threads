@@ -45,9 +45,17 @@ final class ThreadLocalResettingRunnable extends DelegatingRunnable {
 
         static {
             final Field threadLocals = AccessController.doPrivileged(new DeclaredFieldAction(Thread.class, "threadLocals"));
-            threadLocalMapOffs = threadLocals == null ? 0 : JBossExecutors.unsafe.objectFieldOffset(threadLocals);
+            if (threadLocals == null) {
+                threadLocalMapOffs = 0;
+            } else {
+                threadLocalMapOffs = JBossExecutors.unsafe.objectFieldOffset(threadLocals);
+            }
             final Field inheritableThreadLocals = AccessController.doPrivileged(new DeclaredFieldAction(Thread.class, "inheritableThreadLocals"));
-            inheritableThreadLocalMapOffs = inheritableThreadLocals == null ? 0 : JBossExecutors.unsafe.objectFieldOffset(inheritableThreadLocals);
+            if (inheritableThreadLocals == null) {
+                inheritableThreadLocalMapOffs = 0;
+            } else {
+                inheritableThreadLocalMapOffs = JBossExecutors.unsafe.objectFieldOffset(inheritableThreadLocals);
+            }
         }
 
         static void run() {
