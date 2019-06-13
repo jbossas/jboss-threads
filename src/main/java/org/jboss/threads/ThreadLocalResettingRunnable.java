@@ -18,9 +18,6 @@
 
 package org.jboss.threads;
 
-import java.lang.reflect.Field;
-import java.security.AccessController;
-
 final class ThreadLocalResettingRunnable extends DelegatingRunnable {
 
     ThreadLocalResettingRunnable(final Runnable delegate) {
@@ -44,24 +41,18 @@ final class ThreadLocalResettingRunnable extends DelegatingRunnable {
         private static final long inheritableThreadLocalMapOffs;
 
         static {
-            final Field threadLocals = AccessController.doPrivileged(new DeclaredFieldAction(Thread.class, "threadLocals"));
-            if (threadLocals == null) {
-                threadLocalMapOffs = 0;
-            } else {
-                threadLocalMapOffs = JBossExecutors.unsafe.objectFieldOffset(threadLocals);
-            }
-            final Field inheritableThreadLocals = AccessController.doPrivileged(new DeclaredFieldAction(Thread.class, "inheritableThreadLocals"));
-            if (inheritableThreadLocals == null) {
-                inheritableThreadLocalMapOffs = 0;
-            } else {
-                inheritableThreadLocalMapOffs = JBossExecutors.unsafe.objectFieldOffset(inheritableThreadLocals);
+            try {
+                threadLocalMapOffs = JBossExecutors.unsafe.objectFieldOffset(Thread.class.getDeclaredField("threadLocals"));
+                inheritableThreadLocalMapOffs = JBossExecutors.unsafe.objectFieldOffset(Thread.class.getDeclaredField("inheritableThreadLocals"));
+            } catch (NoSuchFieldException e) {
+                throw new NoSuchFieldError(e.getMessage());
             }
         }
 
         static void run() {
             final Thread thread = Thread.currentThread();
-            if (threadLocalMapOffs != 0) JBossExecutors.unsafe.putObject(thread, threadLocalMapOffs, null);
-            if (inheritableThreadLocalMapOffs != 0) JBossExecutors.unsafe.putObject(thread, inheritableThreadLocalMapOffs, null);
+            JBossExecutors.unsafe.putObject(thread, threadLocalMapOffs, null);
+            JBossExecutors.unsafe.putObject(thread, inheritableThreadLocalMapOffs, null);
         }
     }
 }
