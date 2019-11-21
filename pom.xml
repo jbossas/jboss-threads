@@ -49,6 +49,13 @@
         </license>
     </licenses>
 
+    <scm>
+        <url>https://github.com/jbossas/jboss-threads</url>
+        <connection>https://github.com/jbossas/jboss-threads.git</connection>
+        <developerConnection>scm:git:git@github.com:jbossas/jboss-threads.git</developerConnection>
+        <tag>HEAD</tag>
+    </scm>
+
     <properties>
         <test.level>INFO</test.level>
 
