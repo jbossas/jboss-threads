@@ -21,9 +21,6 @@ package org.jboss.threads;
 import static org.jboss.threads.JBossExecutors.unsafe;
 
 import org.wildfly.common.annotation.NotNull;
-import org.wildfly.common.lock.ExtendedLock;
-import org.wildfly.common.lock.SpinLock;
-import org.wildfly.common.lock.Locks;
 
 /**
  * EQE base class: head section.
@@ -51,10 +48,6 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
      * Use a spin lock for the head lock.
      */
     static final boolean HEAD_SPIN = readBooleanPropertyPrefixed("head-spin", true);
-    /**
-     * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
-     */
-    final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? HEAD_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
 
     // =======================================================
     // Current state fields
