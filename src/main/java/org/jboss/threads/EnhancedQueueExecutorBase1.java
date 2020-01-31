@@ -21,9 +21,6 @@ package org.jboss.threads;
 import static org.jboss.threads.JBossExecutors.unsafe;
 
 import org.wildfly.common.annotation.NotNull;
-import org.wildfly.common.lock.ExtendedLock;
-import org.wildfly.common.lock.SpinLock;
-import org.wildfly.common.lock.Locks;
 
 /**
  * EQE base class: tail section.
@@ -59,11 +56,6 @@ abstract class EnhancedQueueExecutorBase1 extends EnhancedQueueExecutorBase0 {
      * moderate contention among 8 CPUs can result in thousands of spin misses per execution.
      */
     static final boolean TAIL_LOCK = COMBINED_LOCK || readBooleanPropertyPrefixed("tail-lock", true);
-
-    /**
-     * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
-     */
-    final ExtendedLock tailLock = TAIL_LOCK ? TAIL_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
 
     // =======================================================
     // Current state fields

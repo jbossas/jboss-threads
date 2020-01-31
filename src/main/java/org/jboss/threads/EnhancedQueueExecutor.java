@@ -53,6 +53,8 @@ import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 import org.wildfly.common.Assert;
 import org.wildfly.common.lock.ExtendedLock;
+import org.wildfly.common.lock.Locks;
+import org.wildfly.common.lock.SpinLock;
 
 /**
  * A task-or-thread queue backed thread pool executor service.  Tasks are added in a FIFO manner, and consumers in a LIFO manner.
@@ -177,6 +179,20 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * The access control context of the creating thread.
      */
     private final AccessControlContext acc;
+
+    // =======================================================
+    // Locks
+    // =======================================================
+
+    /**
+     * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
+     */
+    private final ExtendedLock tailLock = TAIL_LOCK ? TAIL_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
+
+    /**
+     * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
+     */
+    private final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? HEAD_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
 
     // =======================================================
     // Current state fields
