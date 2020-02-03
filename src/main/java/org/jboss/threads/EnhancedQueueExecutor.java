@@ -2007,7 +2007,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     private static boolean currentThreadHolds(final ExtendedLock lock) {
-        return lock.isHeldByCurrentThread();
+        return lock != null && lock.isHeldByCurrentThread();
     }
 
     // =======================================================
