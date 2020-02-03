@@ -1509,6 +1509,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         private QNode getOrAddNode() {
             TaskNode head;
             QNode headNext;
+            PoolThreadNode newNode = null;
             for (;;) {
                 head = EnhancedQueueExecutor.this.head;
                 headNext = head.getNext();
@@ -1519,8 +1520,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                         return taskNode;
                     }
                 } else if (headNext instanceof PoolThreadNode || headNext == null) {
-                    PoolThreadNode newNode;
-                    newNode = new PoolThreadNode((PoolThreadNode) headNext, Thread.currentThread());
+                    if (newNode == null) {
+                        newNode = new PoolThreadNode(Thread.currentThread());
+                    }
+                    newNode.setNext(headNext);
                     if (head.compareAndSetNext(headNext, newNode)) {
                         return newNode;
                     }
@@ -1696,6 +1699,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         QNode tailNext;
         TaskNode tail = this.tail;
         final int result;
+        TaskNode node = null;
         for (;;) {
             tailNext = tail.getNext();
             if (tailNext instanceof TaskNode) {
@@ -1779,7 +1783,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     break;
                 }
                 // queue size increased successfully; we can add to the list
-                TaskNode node = new TaskNode(runnable);
+                if (node == null) {
+                    // avoid re-allocating TaskNode instances on subsequent iterations
+                    node = new TaskNode(runnable);
+                }
                 // state change ex5:
                 //   tail(snapshot).next ← new task node
                 // cannot succeed: sh2
@@ -2092,10 +2099,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         @SuppressWarnings("unused")
         private volatile QNode next;
 
-        QNode(final QNode next) {
-            this.next = next;
-        }
-
         boolean compareAndSetNext(QNode expect, QNode update) {
             return unsafe.compareAndSwapObject(this, nextOffset, expect, update);
         }
@@ -2125,8 +2128,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         @SuppressWarnings("unused")
         private volatile Runnable task;
 
-        PoolThreadNode(final PoolThreadNode next, final Thread thread) {
-            super(next);
+        PoolThreadNode(final Thread thread) {
             this.thread = thread;
             task = WAITING;
         }
@@ -2149,9 +2151,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     }
 
     static final class TerminateWaiterNode extends QNode {
-        TerminateWaiterNode() {
-            super(null);
-        }
     }
 
     static final class TaskNode extends QNode {
@@ -2159,7 +2158,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         TaskNode(final Runnable task) {
             // we always start task nodes with a {@code null} next
-            super(null);
             this.task = task;
         }
 
