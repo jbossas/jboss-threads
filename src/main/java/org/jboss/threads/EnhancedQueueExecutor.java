@@ -2186,15 +2186,17 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         void park(EnhancedQueueExecutor enhancedQueueExecutor) {
             int spins = PARK_SPINS;
-            ThreadLocalRandom tl = ThreadLocalRandom.current();
-            while (spins > 0) {
-                if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
-                    Thread.yield();
-                }
-                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
-                    return;
-                }
-                spins--;
+            if (spins > 0) {
+                ThreadLocalRandom tl = ThreadLocalRandom.current();
+                do {
+                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
+                        Thread.yield();
+                    }
+                    if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                        return;
+                    }
+                    spins--;
+                } while (spins > 0);
             }
             try {
                 if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
@@ -2205,25 +2207,30 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             }
         }
         void park(EnhancedQueueExecutor enhancedQueueExecutor, long nanos) {
-            long start = System.nanoTime();
+            long remaining;
             int spins = PARK_SPINS;
-            ThreadLocalRandom tl = ThreadLocalRandom.current();
-            //note that we don't check the nanotime while spinning
-            //as spin time is short and for our use cases it does not matter if the time
-            //overruns a bit (as the nano time is for thread timeout) we just spin then check
-            //to keep performance consistent between the two versions.
-            while (spins > 0) {
-                if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
-                    Thread.yield();
-                }
-                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+            if (spins > 0) {
+                long start = System.nanoTime();
+                ThreadLocalRandom tl = ThreadLocalRandom.current();
+                //note that we don't check the nanotime while spinning
+                //as spin time is short and for our use cases it does not matter if the time
+                //overruns a bit (as the nano time is for thread timeout) we just spin then check
+                //to keep performance consistent between the two versions.
+                do {
+                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
+                        Thread.yield();
+                    }
+                    if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                        return;
+                    }
+                    spins--;
+                } while (spins > 0);
+                remaining = nanos - (System.nanoTime() - start);
+                if (remaining < 0) {
                     return;
                 }
-                spins--;
-            }
-            long remaining = nanos - (System.nanoTime() - start);
-            if (remaining < 0) {
-                return;
+            } else {
+                remaining = nanos;
             }
             try {
                 if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
