@@ -21,6 +21,7 @@ package org.jboss.threads;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.lang.Thread.currentThread;
+import static java.lang.Thread.holdsLock;
 import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
 import static java.util.concurrent.locks.LockSupport.*;
@@ -44,7 +45,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 
 import javax.management.ObjectInstance;
@@ -198,12 +198,12 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     /**
      * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
      */
-    private final ExtendedLock tailLock = TAIL_LOCK ? TAIL_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
+    private final QueueLock tailLock;
 
     /**
      * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
      */
-    private final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? HEAD_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
+    private final QueueLock headLock;
 
     // =======================================================
     // Current state fields
@@ -359,6 +359,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     EnhancedQueueExecutor(final Builder builder) {
         super();
+        tailLock = newQueueLock(TAIL_LOCK, TAIL_SYNCHRONIZED, TAIL_SPIN);
+        headLock = COMBINED_LOCK ? tailLock : newQueueLock(HEAD_LOCK, HEAD_SYNCHRONIZED, HEAD_SPIN);
         this.acc = getContext();
         int maxSize = builder.getMaximumPoolSize();
         int coreSize = min(builder.getCorePoolSize(), maxSize);
@@ -764,13 +766,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         final Runnable realRunnable = JBossExecutors.classLoaderPreservingTaskUnchecked(runnable);
         int result;
         if (TAIL_LOCK) {
-            Lock lock = this.tailLock;
-            lock.lock();
-            try {
-                result = tryExecute(realRunnable);
-            } finally {
-                lock.unlock();
-            }
+            result = tailLock.tryExecute(this, realRunnable);
         } else {
             result = tryExecute(realRunnable);
         }
@@ -1433,7 +1429,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          */
         public void run() {
             final Thread currentThread = Thread.currentThread();
-            final Lock headLock = EnhancedQueueExecutor.this.headLock;
+            final QueueLock headLock = EnhancedQueueExecutor.this.headLock;
             final LongAdder spinMisses = EnhancedQueueExecutor.this.spinMisses;
             runningThreads.add(currentThread);
 
@@ -1444,12 +1440,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             QNode node;
             processingQueue: for (;;) {
                 if (HEAD_LOCK) {
-                    headLock.lock();
-                    try {
-                        node = getOrAddNode();
-                    } finally {
-                        headLock.unlock();
-                    }
+                    node = headLock.getOrAddNode(this);
                 } else {
                     node = getOrAddNode();
                 }
@@ -2035,7 +2026,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // Locks
     // =======================================================
 
-    private static boolean currentThreadHolds(final ExtendedLock lock) {
+    private static boolean currentThreadHolds(final QueueLock lock) {
         return lock != null && lock.isHeldByCurrentThread();
     }
 
@@ -2275,6 +2266,89 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             } finally {
                 this.task = null;
             }
+        }
+    }
+
+    // =======================================================
+    // Lock functionality
+    // =======================================================
+
+    /*
+     * Order of operations matches parameters:
+     * 1. enabled
+     * 2. synchronized
+     * 3. spin
+     */
+    private static QueueLock newQueueLock(boolean enabled, boolean sync, boolean spin) {
+        if (!enabled) {
+            return null;
+        }
+        if (sync) {
+            return new SynchronizedQueueLock();
+        }
+        return new ExtendedLockQueueLock(spin ? new SpinLock() : Locks.reentrantLock());
+    }
+
+    // Abstract classes have a slight performance edge over interfaces
+    abstract static class QueueLock {
+
+        abstract QNode getOrAddNode(ThreadBody threadBody);
+
+        abstract int tryExecute(EnhancedQueueExecutor executor, Runnable runnable);
+
+        abstract boolean isHeldByCurrentThread();
+
+    }
+
+    static final class ExtendedLockQueueLock extends QueueLock {
+
+        private final ExtendedLock lock;
+
+        ExtendedLockQueueLock(ExtendedLock lock) {
+            this.lock = lock;
+        }
+
+        @Override
+        QNode getOrAddNode(ThreadBody threadBody) {
+            lock.lock();
+            try {
+                return threadBody.getOrAddNode();
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        @Override
+        int tryExecute(EnhancedQueueExecutor executor, Runnable runnable) {
+            lock.lock();
+            try {
+                return executor.tryExecute(runnable);
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        @Override
+        boolean isHeldByCurrentThread() {
+            return lock.isHeldByCurrentThread();
+        }
+    }
+
+    static final class SynchronizedQueueLock extends QueueLock {
+
+        @Override
+        synchronized QNode getOrAddNode(ThreadBody threadBody) {
+            return threadBody.getOrAddNode();
+        }
+
+        @Override
+        synchronized int tryExecute(EnhancedQueueExecutor executor, Runnable runnable) {
+            return executor.tryExecute(runnable);
+        }
+
+        @Override
+        boolean isHeldByCurrentThread() {
+            return holdsLock(this);
         }
     }
 

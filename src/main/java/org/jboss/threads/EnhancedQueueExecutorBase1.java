@@ -52,6 +52,11 @@ abstract class EnhancedQueueExecutorBase1 extends EnhancedQueueExecutorBase0 {
     static final boolean TAIL_SPIN = ! COMBINED_LOCK && readBooleanPropertyPrefixed("tail-spin", false);
 
     /**
+     * Use synchronized for the tail lock.
+     */
+    static final boolean TAIL_SYNCHRONIZED = readBooleanPropertyPrefixed("tail-synchronized", false);
+
+    /**
      * Attempt to lock frequently-contended operations on the list tail.  This defaults to {@code true} because
      * moderate contention among 8 CPUs can result in thousands of spin misses per execution.
      */

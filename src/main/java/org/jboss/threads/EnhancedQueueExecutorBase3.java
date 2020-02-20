@@ -48,6 +48,10 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
      * Use a spin lock for the head lock.
      */
     static final boolean HEAD_SPIN = readBooleanPropertyPrefixed("head-spin", true);
+    /**
+     * Use synchronized for the head lock.
+     */
+    static final boolean HEAD_SYNCHRONIZED = readBooleanPropertyPrefixed("head-synchronized", false);
 
     // =======================================================
     // Current state fields
