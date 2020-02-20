@@ -149,11 +149,15 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * Set to enable or disable MBean registration.
      */
     static final boolean DISABLE_MBEAN = readBooleanPropertyPrefixed("register-mbean", readProperty("org.graalvm.nativeimage.imagecode", null) != null);
-
     /**
      * The number of times a thread should spin/yield before actually parking.
      */
-    static final int SPINS = 1 << 7;
+    static final int PARK_SPINS = readIntPropertyPrefixed("park-spins", 1 << 7);
+    /**
+     * The yield ratio expressed as the number of spins that should yield.
+     */
+    static final int YIELD_FACTOR = max(min(readIntPropertyPrefixed("park-yields", 1), PARK_SPINS), 0);
+
     // =======================================================
     // Constants
     // =======================================================
@@ -2181,10 +2185,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         void park(EnhancedQueueExecutor enhancedQueueExecutor) {
-            int spins = SPINS;
+            int spins = PARK_SPINS;
             ThreadLocalRandom tl = ThreadLocalRandom.current();
             while (spins > 0) {
-                if (tl.nextInt(SPINS) == 0) {
+                if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
                     Thread.yield();
                 }
                 if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
@@ -2202,14 +2206,14 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
         void park(EnhancedQueueExecutor enhancedQueueExecutor, long nanos) {
             long start = System.nanoTime();
-            int spins = SPINS;
+            int spins = PARK_SPINS;
             ThreadLocalRandom tl = ThreadLocalRandom.current();
             //note that we don't check the nanotime while spinning
             //as spin time is short and for our use cases it does not matter if the time
             //overruns a bit (as the nano time is for thread timeout) we just spin then check
             //to keep performance consistent between the two versions.
             while (spins > 0) {
-                if (tl.nextInt(SPINS) == 0) {
+                if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
                     Thread.yield();
                 }
                 if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
