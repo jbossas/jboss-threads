@@ -45,6 +45,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.LockSupport;
 
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
@@ -149,6 +150,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      */
     static final boolean DISABLE_MBEAN = readBooleanPropertyPrefixed("register-mbean", readProperty("org.graalvm.nativeimage.imagecode", null) != null);
 
+    /**
+     * The number of times a thread should spin/yield before actually parking.
+     */
+    static final int SPINS = 1 << 7;
     // =======================================================
     // Constants
     // =======================================================
@@ -963,7 +968,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                         //   no change (repeat loop)
                         while (node != null) {
                             node.compareAndSetTask(WAITING, EXIT);
-                            unpark(node.thread);
+                            node.unpark();
                             node = node.getNext();
                         }
                         // success; exit loop
@@ -1471,9 +1476,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                                     continue waitingForTask;
                                 } else {
                                     if (elapsed >= timeoutNanos) {
-                                        park(EnhancedQueueExecutor.this);
+                                        newNode.park(EnhancedQueueExecutor.this);
                                     } else {
-                                        parkNanos(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                        newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
                                     }
                                     Thread.interrupted();
                                     elapsed = System.nanoTime() - start;
@@ -1483,7 +1488,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                                 //throw Assert.unreachableCode();
                             } else {
                                 assert task == WAITING;
-                                parkNanos(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
                                 Thread.interrupted();
                                 elapsed = System.nanoTime() - start;
                                 // retry inner
@@ -1744,7 +1749,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // post-actions (fail):
                     //   retry outer with new tail(snapshot)
                     if (consumerNode.compareAndSetTask(WAITING, runnable)) {
-                        unpark(consumerNode.getThread());
+                        consumerNode.unpark();
                         result = EXE_OK;
                         break;
                     }
@@ -2113,11 +2118,31 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     }
 
     static final class PoolThreadNode extends QNode {
+
+        /**
+         * Thread is running normally.
+         */
+        private static int STATE_NORMAL = 0;
+
+        /**
+         * Thread is parked (or about to park), and unpark call is necessary to wake the thread
+         */
+        private static int STATE_PARKED = 1;
+
+        /**
+         * The thread has been unparked, any thread that is spinning or about to park will return,
+         * if not thread is currently spinning the next thread that attempts to spin will immediately return
+         */
+        private static int STATE_UNPARKED = 2;
+
+
         private static final long taskOffset;
+        private static final long parkedOffset;
 
         static {
             try {
                 taskOffset = unsafe.objectFieldOffset(PoolThreadNode.class.getDeclaredField("task"));
+                parkedOffset = unsafe.objectFieldOffset(PoolThreadNode.class.getDeclaredField("parked"));
             } catch (NoSuchFieldException e) {
                 throw new NoSuchFieldError(e.getMessage());
             }
@@ -2127,6 +2152,12 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         @SuppressWarnings("unused")
         private volatile Runnable task;
+
+        /**
+         * The park state, see the STATE_ constants for the meanings of each value
+         */
+        @SuppressWarnings("unused")
+        private volatile int parked;
 
         PoolThreadNode(final Thread thread) {
             this.thread = thread;
@@ -2147,6 +2178,63 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         PoolThreadNode getNext() {
             return (PoolThreadNode) super.getNext();
+        }
+
+        void park(EnhancedQueueExecutor enhancedQueueExecutor) {
+            int spins = SPINS;
+            ThreadLocalRandom tl = ThreadLocalRandom.current();
+            while (spins > 0) {
+                if (tl.nextInt(SPINS) == 0) {
+                    Thread.yield();
+                }
+                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    return;
+                }
+                spins--;
+            }
+            try {
+                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
+                    LockSupport.park(enhancedQueueExecutor);
+                }
+            } finally {
+                unsafe.compareAndSwapInt(this, parkedOffset, STATE_PARKED, STATE_NORMAL);
+            }
+        }
+        void park(EnhancedQueueExecutor enhancedQueueExecutor, long nanos) {
+            long start = System.nanoTime();
+            int spins = SPINS;
+            ThreadLocalRandom tl = ThreadLocalRandom.current();
+            //note that we don't check the nanotime while spinning
+            //as spin time is short and for our use cases it does not matter if the time
+            //overruns a bit (as the nano time is for thread timeout) we just spin then check
+            //to keep performance consistent between the two versions.
+            while (spins > 0) {
+                if (tl.nextInt(SPINS) == 0) {
+                    Thread.yield();
+                }
+                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    return;
+                }
+                spins--;
+            }
+            long remaining = nanos - (System.nanoTime() - start);
+            if (remaining < 0) {
+                return;
+            }
+            try {
+                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
+                    LockSupport.parkNanos(enhancedQueueExecutor, remaining);
+                }
+            } finally {
+                unsafe.compareAndSwapInt(this, parkedOffset, STATE_PARKED, STATE_NORMAL);
+            }
+        }
+
+        void unpark() {
+            if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_UNPARKED)) {
+                return;
+            }
+            LockSupport.unpark(thread);
         }
     }
 
