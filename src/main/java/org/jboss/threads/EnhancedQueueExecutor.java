@@ -53,6 +53,7 @@ import javax.management.ObjectName;
 import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 import org.wildfly.common.Assert;
+import org.wildfly.common.cpu.ProcessorInfo;
 import org.wildfly.common.lock.ExtendedLock;
 import org.wildfly.common.lock.Locks;
 import org.wildfly.common.lock.SpinLock;
@@ -152,7 +153,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     /**
      * The number of times a thread should spin/yield before actually parking.
      */
-    static final int PARK_SPINS = readIntPropertyPrefixed("park-spins", 1 << 7);
+    static final int PARK_SPINS = readIntPropertyPrefixed("park-spins", ProcessorInfo.availableProcessors() == 1 ? 0 : 1 << 7);
     /**
      * The yield ratio expressed as the number of spins that should yield.
      */
