@@ -66,15 +66,15 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.graalvm</groupId>
+            <groupId>org.graalvm.sdk</groupId>
             <artifactId>graal-sdk</artifactId>
-            <version>1.0.0-rc6</version>
+            <version>19.3.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>org.jboss.graalvm</groupId>
-            <artifactId>graal-annotations</artifactId>
-            <version>1.0.0-rc4</version>
+            <groupId>org.graalvm.nativeimage</groupId>
+            <artifactId>svm</artifactId>
+            <version>19.3.1</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
