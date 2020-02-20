@@ -2169,10 +2169,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             task = WAITING;
         }
 
-        Thread getThread() {
-            return thread;
-        }
-
         boolean compareAndSetTask(final Runnable expect, final Runnable update) {
             return unsafe.compareAndSwapObject(this, taskOffset, expect, update);
         }
