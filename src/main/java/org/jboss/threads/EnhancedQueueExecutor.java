@@ -2127,18 +2127,18 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         /**
          * Thread is running normally.
          */
-        private static int STATE_NORMAL = 0;
+        private static final int STATE_NORMAL = 0;
 
         /**
          * Thread is parked (or about to park), and unpark call is necessary to wake the thread
          */
-        private static int STATE_PARKED = 1;
+        private static final int STATE_PARKED = 1;
 
         /**
          * The thread has been unparked, any thread that is spinning or about to park will return,
          * if not thread is currently spinning the next thread that attempts to spin will immediately return
          */
-        private static int STATE_UNPARKED = 2;
+        private static final int STATE_UNPARKED = 2;
 
 
         private static final long taskOffset;
