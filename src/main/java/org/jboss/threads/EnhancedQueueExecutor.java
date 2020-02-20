@@ -149,7 +149,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     /**
      * Set to enable or disable MBean registration.
      */
-    static final boolean DISABLE_MBEAN = readBooleanPropertyPrefixed("register-mbean", readProperty("org.graalvm.nativeimage.imagecode", null) != null);
+    static final boolean DISABLE_MBEAN = readBooleanPropertyPrefixed("disable-mbean", readProperty("org.graalvm.nativeimage.imagecode", null) != null);
     /**
      * The number of times a thread should spin/yield before actually parking.
      */
