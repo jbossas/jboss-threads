@@ -75,6 +75,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     static {
         Version.getVersionString();
+        MBeanUnregisterAction.forceInit();
     }
 
     /*
@@ -1396,6 +1397,25 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         return runningThreads.toArray(NO_THREADS);
     }
 
+    static class MBeanUnregisterAction implements PrivilegedAction<Void> {
+        static void forceInit() {
+        }
+
+        private final Object handle;
+
+        MBeanUnregisterAction(final Object handle) {
+            this.handle = handle;
+        }
+
+        public Void run() {
+            try {
+                ManagementFactory.getPlatformMBeanServer().unregisterMBean(((ObjectInstance) handle).getObjectName());
+            } catch (Throwable ignored) {
+            }
+            return null;
+        }
+    }
+
     // =======================================================
     // Pooled thread body
     // =======================================================
@@ -1850,15 +1870,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         if (! DISABLE_MBEAN) {
             final Object handle = this.handle;
             if (handle != null) {
-                doPrivileged(new PrivilegedAction<Void>() {
-                    public Void run() {
-                        try {
-                            ManagementFactory.getPlatformMBeanServer().unregisterMBean(((ObjectInstance)handle).getObjectName());
-                        } catch (Throwable ignored) {
-                        }
-                        return null;
-                    }
-                }, acc);
+                doPrivileged(new MBeanUnregisterAction(handle), acc);
             }
         }
     }
