@@ -2198,11 +2198,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             if (spins > 0) {
                 ThreadLocalRandom tl = ThreadLocalRandom.current();
                 do {
-                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
-                        Thread.yield();
-                    }
                     if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
                         return;
+                    }
+                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
+                        Thread.yield();
+                    } else {
+                        JDKSpecific.onSpinWait();
                     }
                     spins--;
                 } while (spins > 0);
@@ -2226,11 +2228,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 //overruns a bit (as the nano time is for thread timeout) we just spin then check
                 //to keep performance consistent between the two versions.
                 do {
-                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
-                        Thread.yield();
-                    }
                     if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
                         return;
+                    }
+                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
+                        Thread.yield();
+                    } else {
+                        JDKSpecific.onSpinWait();
                     }
                     spins--;
                 } while (spins > 0);
