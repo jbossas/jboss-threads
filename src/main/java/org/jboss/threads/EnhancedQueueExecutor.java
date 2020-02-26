@@ -159,6 +159,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * The yield ratio expressed as the number of spins that should yield.
      */
     static final int YIELD_FACTOR = max(min(readIntPropertyPrefixed("park-yields", 1), PARK_SPINS), 0);
+    /**
+     * The number of times a submitter should spin waiting for a consumer before giving up and queueing the task.
+     */
+    static final int SUBMIT_SPINS = readIntPropertyPrefixed("submit-spins", ProcessorInfo.availableProcessors() == 1 ? 0 : 1 << 7);
+
 
     // =======================================================
     // Constants
@@ -1730,6 +1735,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         TaskNode tail = this.tail;
         final int result;
         TaskNode node = null;
+        int spins = SUBMIT_SPINS;
         for (;;) {
             tailNext = tail.getNext();
             if (tailNext instanceof TaskNode) {
@@ -1795,6 +1801,12 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     break;
                 }
                 assert tr == AT_NO;
+                // see if we need to spin
+                if (spins > 0) {
+                    JDKSpecific.onSpinWait();
+                    spins--;
+                    continue;
+                }
                 // no; try to enqueue
                 if (! NO_QUEUE_LIMIT && ! increaseQueueSize()) {
                     // queue is full
