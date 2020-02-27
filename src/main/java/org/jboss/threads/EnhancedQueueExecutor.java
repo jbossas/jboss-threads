@@ -320,7 +320,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // Thread state field constants
     // =======================================================
 
-    private static final long TS_THREAD_CNT_MASK = 0b1111_1111_1111_1111_1111L; // 20 bits, can be shifted as needed
+    static final long TS_THREAD_CNT_MASK = 0b1111_1111_1111_1111_1111L; // 20 bits, can be shifted as needed
 
     // shift amounts
     private static final long TS_CURRENT_SHIFT   = 0;
