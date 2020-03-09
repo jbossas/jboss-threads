@@ -2286,21 +2286,43 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         if (sync) {
             return new SynchronizedQueueLock();
         }
-        return new ExtendedLockQueueLock(spin ? new SpinLock() : Locks.reentrantLock());
+        return spin ? new SpinLockQueueLock() : new ExtendedLockQueueLock(Locks.reentrantLock());
     }
 
-    // Abstract classes have a slight performance edge over interfaces
-    abstract static class QueueLock {
+    interface QueueLock {
 
-        abstract QNode getOrAddNode(ThreadBody threadBody);
+        QNode getOrAddNode(ThreadBody threadBody);
 
-        abstract int tryExecute(EnhancedQueueExecutor executor, Runnable runnable);
+        int tryExecute(EnhancedQueueExecutor executor, Runnable runnable);
 
-        abstract boolean isHeldByCurrentThread();
+        boolean isHeldByCurrentThread();
 
     }
 
-    static final class ExtendedLockQueueLock extends QueueLock {
+    static final class SpinLockQueueLock extends SpinLock implements QueueLock {
+
+        @Override
+        public QNode getOrAddNode(ThreadBody threadBody) {
+            lock();
+            try {
+                return threadBody.getOrAddNode();
+            } finally {
+                unlock();
+            }
+        }
+
+        @Override
+        public int tryExecute(EnhancedQueueExecutor executor, Runnable runnable) {
+            lock();
+            try {
+                return executor.tryExecute(runnable);
+            } finally {
+                unlock();
+            }
+        }
+    }
+
+    static final class ExtendedLockQueueLock implements QueueLock {
 
         private final ExtendedLock lock;
 
@@ -2309,45 +2331,47 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         @Override
-        QNode getOrAddNode(ThreadBody threadBody) {
-            lock.lock();
+        public QNode getOrAddNode(ThreadBody threadBody) {
+            ExtendedLock local = lock;
+            local.lock();
             try {
                 return threadBody.getOrAddNode();
             } finally {
-                lock.unlock();
+                local.unlock();
             }
         }
 
         @Override
-        int tryExecute(EnhancedQueueExecutor executor, Runnable runnable) {
-            lock.lock();
+        public int tryExecute(EnhancedQueueExecutor executor, Runnable runnable) {
+            ExtendedLock local = lock;
+            local.lock();
             try {
                 return executor.tryExecute(runnable);
             } finally {
-                lock.unlock();
+                local.unlock();
             }
         }
 
         @Override
-        boolean isHeldByCurrentThread() {
+        public boolean isHeldByCurrentThread() {
             return lock.isHeldByCurrentThread();
         }
     }
 
-    static final class SynchronizedQueueLock extends QueueLock {
+    static final class SynchronizedQueueLock implements QueueLock {
 
         @Override
-        synchronized QNode getOrAddNode(ThreadBody threadBody) {
+        public synchronized QNode getOrAddNode(ThreadBody threadBody) {
             return threadBody.getOrAddNode();
         }
 
         @Override
-        synchronized int tryExecute(EnhancedQueueExecutor executor, Runnable runnable) {
+        public synchronized int tryExecute(EnhancedQueueExecutor executor, Runnable runnable) {
             return executor.tryExecute(runnable);
         }
 
         @Override
-        boolean isHeldByCurrentThread() {
+        public boolean isHeldByCurrentThread() {
             return holdsLock(this);
         }
     }
