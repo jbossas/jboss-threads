@@ -28,4 +28,8 @@ final class JDKSpecific {
     static TemporalUnit timeToTemporal(final TimeUnit timeUnit) {
         return timeUnit.toChronoUnit();
     }
+
+    static void onSpinWait() {
+        Thread.onSpinWait();
+    }
 }

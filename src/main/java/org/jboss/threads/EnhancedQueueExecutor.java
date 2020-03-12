@@ -2194,18 +2194,18 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         void park(EnhancedQueueExecutor enhancedQueueExecutor) {
-            int spins = PARK_SPINS;
-            if (spins > 0) {
-                ThreadLocalRandom tl = ThreadLocalRandom.current();
-                do {
-                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
+            if (PARK_SPINS > 0) {
+                if (optimisticSpin()) {
+                    return;
+                }
+                if (YIELD_FACTOR > 0) {
+                    for (int spins = 0; spins < YIELD_FACTOR; spins++) {
                         Thread.yield();
+                        if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                            return;
+                        }
                     }
-                    if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
-                        return;
-                    }
-                    spins--;
-                } while (spins > 0);
+                }
             }
             try {
                 if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
@@ -2215,31 +2215,27 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 unsafe.compareAndSwapInt(this, parkedOffset, STATE_PARKED, STATE_NORMAL);
             }
         }
+
         void park(EnhancedQueueExecutor enhancedQueueExecutor, long nanos) {
-            long remaining;
-            int spins = PARK_SPINS;
-            if (spins > 0) {
-                long start = System.nanoTime();
-                ThreadLocalRandom tl = ThreadLocalRandom.current();
-                //note that we don't check the nanotime while spinning
-                //as spin time is short and for our use cases it does not matter if the time
-                //overruns a bit (as the nano time is for thread timeout) we just spin then check
-                //to keep performance consistent between the two versions.
-                do {
-                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
-                        Thread.yield();
-                    }
-                    if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
-                        return;
-                    }
-                    spins--;
-                } while (spins > 0);
-                remaining = nanos - (System.nanoTime() - start);
-                if (remaining < 0) {
+            //note that we don't check the nanotime while spinning
+            //as spin time is short and for our use cases it does not matter if the time
+            //overruns a bit (as the nano time is for thread timeout) we just spin then check
+            //to keep performance consistent between the two versions.
+            long remaining = nanos;
+            if (PARK_SPINS > 0) {
+                if (optimisticSpin()) {
                     return;
                 }
-            } else {
-                remaining = nanos;
+                if (YIELD_FACTOR > 0) {
+                    long start = System.nanoTime();
+                    for (int spins = 0; spins < YIELD_FACTOR; spins++) {
+                        Thread.yield();
+                        if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                            return;
+                        }
+                    }
+                    remaining -= (System.nanoTime() - start);
+                }
             }
             try {
                 if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
@@ -2248,6 +2244,22 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             } finally {
                 unsafe.compareAndSwapInt(this, parkedOffset, STATE_PARKED, STATE_NORMAL);
             }
+        }
+
+        /** Returns true if this operation was successful and a park operation is unnecessary. */
+        boolean optimisticSpin() {
+            // Always begin with an optimistic check to allow the loop (either onSpinWait or yield)
+            // to wait before a comparison.
+            if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                return true;
+            }
+            for (int spins = 0, limit = PARK_SPINS - YIELD_FACTOR; spins < limit; spins++) {
+                JDKSpecific.onSpinWait();
+                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    return true;
+                }
+            }
+            return false;
         }
 
         void unpark() {
