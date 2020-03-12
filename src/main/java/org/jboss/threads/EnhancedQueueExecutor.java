@@ -2084,7 +2084,21 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
     }
 
-    static final class PoolThreadNode extends QNode {
+    /** Padding between PoolThreadNode task and parked fields and QNode.next */
+    static abstract class PoolThreadNodeBase extends QNode {
+        /**
+         * Padding fields.
+         */
+        @SuppressWarnings("unused")
+        int p00, p01, p02, p03,
+            p04, p05, p06, p07,
+            p08, p09, p0A, p0B,
+            p0C, p0D, p0E, p0F;
+
+        PoolThreadNodeBase() {}
+    }
+
+    static final class PoolThreadNode extends PoolThreadNodeBase {
 
         /**
          * Thread is running normally.
