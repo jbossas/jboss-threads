@@ -746,16 +746,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         Assert.checkNotNullParam("runnable", runnable);
         final Runnable realRunnable = JBossExecutors.classLoaderPreservingTaskUnchecked(runnable);
         int result;
-        if (TAIL_LOCK) {
-            lockTail();
-            try {
-                result = tryExecute(realRunnable);
-            } finally {
-                unlockTail();
-            }
-        } else {
-            result = tryExecute(realRunnable);
-        }
+        result = tryExecute(realRunnable);
         boolean ok = false;
         if (result == EXE_OK) {
             // last check to ensure that there is at least one existent thread to avoid rare thread timeout race condition
@@ -1706,6 +1697,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     private int tryExecute(final Runnable runnable) {
         QNode tailNext;
+        if (TAIL_LOCK) lockTail();
         TaskNode tail = this.tail;
         TaskNode node = null;
         for (;;) {
@@ -1752,6 +1744,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // post-actions (fail):
                     //   retry outer with new tail(snapshot)
                     if (consumerNode.compareAndSetTask(WAITING, runnable)) {
+                        if (TAIL_LOCK) unlockTail();
                         consumerNode.unpark();
                         return EXE_OK;
                     }
@@ -1764,9 +1757,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 // no consumers available; maybe we can start one
                 int tr = tryAllocateThread(growthResistance);
                 if (tr == AT_YES) {
+                    if (TAIL_LOCK) unlockTail();
                     return EXE_CREATE_THREAD;
                 }
                 if (tr == AT_SHUTDOWN) {
+                    if (TAIL_LOCK) unlockTail();
                     return EXE_REJECT_SHUTDOWN;
                 }
                 assert tr == AT_NO;
@@ -1775,6 +1770,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // queue is full
                     // OK last effort to create a thread, disregarding growth limit
                     tr = tryAllocateThread(0.0f);
+                    if (TAIL_LOCK) unlockTail();
                     if (tr == AT_YES) {
                         return EXE_CREATE_THREAD;
                     }
@@ -1802,6 +1798,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // try to update tail to the new node; if this CAS fails then tail already points at past the node
                     // this is because tail can only ever move forward, and the task list is always strongly connected
                     compareAndSetTail(tail, node);
+                    if (TAIL_LOCK) unlockTail();
                     return EXE_OK;
                 }
                 // we failed; we have to drop the queue size back down again to compensate before we can retry
@@ -1810,6 +1807,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 tail = this.tail;
                 if (UPDATE_STATISTICS) spinMisses.increment();
             } else {
+                if (TAIL_LOCK) unlockTail();
                 // no consumers are waiting and the tail(snapshot).next node is non-null and not a task node, therefore it must be a...
                 assert tailNext instanceof TerminateWaiterNode;
                 // shutting down
