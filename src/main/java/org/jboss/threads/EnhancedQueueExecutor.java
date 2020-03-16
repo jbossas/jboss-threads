@@ -762,18 +762,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     public void execute(Runnable runnable) {
         Assert.checkNotNullParam("runnable", runnable);
         final Runnable realRunnable = JBossExecutors.classLoaderPreservingTaskUnchecked(runnable);
-        int result;
-        if (TAIL_LOCK) {
-            Lock lock = this.tailLock;
-            lock.lock();
-            try {
-                result = tryExecute(realRunnable);
-            } finally {
-                lock.unlock();
-            }
-        } else {
-            result = tryExecute(realRunnable);
-        }
+        int result = tryExecute(realRunnable);
         boolean ok = false;
         if (result == EXE_OK) {
             // last check to ensure that there is at least one existent thread to avoid rare thread timeout race condition
@@ -1727,79 +1716,70 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     private int tryExecute(final Runnable runnable) {
         QNode tailNext;
+        PoolThreadNode toUnpark = null;
         TaskNode tail = this.tail;
         final int result;
         TaskNode node = null;
-        for (;;) {
-            tailNext = tail.getNext();
-            if (tailNext instanceof TaskNode) {
-                TaskNode tailNextTaskNode;
-                do {
-                    if (UPDATE_STATISTICS) spinMisses.increment();
-                    tailNextTaskNode = (TaskNode) tailNext;
-                    // retry
-                    tail = tailNextTaskNode;
-                    tailNext = tail.getNext();
-                } while (tailNext instanceof TaskNode);
-                // opportunistically update for the possible benefit of other threads
-                if (UPDATE_TAIL) compareAndSetTail(tail, tailNextTaskNode);
-            }
-            // we've progressed to the first non-task node, as far as we can see
-            assert ! (tailNext instanceof TaskNode);
-            if (tailNext instanceof PoolThreadNode) {
-                final QNode tailNextNext = tailNext.getNext();
-                // state change ex1:
-                //   tail(snapshot).next ← tail(snapshot).next(snapshot).next(snapshot)
-                // succeeds: -
-                // cannot succeed: sh2
-                // preconditions:
-                //   tail(snapshot) is a dead TaskNode
-                //   tail(snapshot).next is PoolThreadNode
-                //   tail(snapshot).next.next* is PoolThreadNode or null
-                // additional success postconditions: -
-                // failure postconditions: -
-                // post-actions (succeed):
-                //   run state change ex2
-                // post-actions (fail):
-                //   retry with new tail(snapshot)
-                if (tail.compareAndSetNext(tailNext, tailNextNext)) {
-                    PoolThreadNode consumerNode = (PoolThreadNode) tailNext;
-                    // state change ex2:
-                    //   tail(snapshot).next(snapshot).task ← runnable
-                    // succeeds: ex1
+        ExtendedLock tailLock = this.tailLock;
+        if (TAIL_LOCK) tailLock.lock();
+        try {
+            for (; ; ) {
+                tailNext = tail.getNext();
+                if (tailNext instanceof TaskNode) {
+                    TaskNode tailNextTaskNode;
+                    do {
+                        if (UPDATE_STATISTICS) spinMisses.increment();
+                        tailNextTaskNode = (TaskNode) tailNext;
+                        // retry
+                        tail = tailNextTaskNode;
+                        tailNext = tail.getNext();
+                    } while (tailNext instanceof TaskNode);
+                    // opportunistically update for the possible benefit of other threads
+                    if (UPDATE_TAIL) compareAndSetTail(tail, tailNextTaskNode);
+                }
+                // we've progressed to the first non-task node, as far as we can see
+                assert !(tailNext instanceof TaskNode);
+                if (tailNext instanceof PoolThreadNode) {
+                    final QNode tailNextNext = tailNext.getNext();
+                    // state change ex1:
+                    //   tail(snapshot).next ← tail(snapshot).next(snapshot).next(snapshot)
+                    // succeeds: -
+                    // cannot succeed: sh2
                     // preconditions:
-                    //   tail(snapshot).next(snapshot).task = WAITING
+                    //   tail(snapshot) is a dead TaskNode
+                    //   tail(snapshot).next is PoolThreadNode
+                    //   tail(snapshot).next.next* is PoolThreadNode or null
+                    // additional success postconditions: -
+                    // failure postconditions: -
                     // post-actions (succeed):
-                    //   unpark thread and return
+                    //   run state change ex2
                     // post-actions (fail):
-                    //   retry outer with new tail(snapshot)
-                    if (consumerNode.compareAndSetTask(WAITING, runnable)) {
-                        consumerNode.unpark();
-                        result = EXE_OK;
-                        break;
+                    //   retry with new tail(snapshot)
+                    if (tail.compareAndSetNext(tailNext, tailNextNext)) {
+                        PoolThreadNode consumerNode = (PoolThreadNode) tailNext;
+                        // state change ex2:
+                        //   tail(snapshot).next(snapshot).task ← runnable
+                        // succeeds: ex1
+                        // preconditions:
+                        //   tail(snapshot).next(snapshot).task = WAITING
+                        // post-actions (succeed):
+                        //   unpark thread and return
+                        // post-actions (fail):
+                        //   retry outer with new tail(snapshot)
+                        if (consumerNode.compareAndSetTask(WAITING, runnable)) {
+                            // unpark must be executed without a lock
+                            toUnpark = consumerNode;
+                            result = EXE_OK;
+                            break;
+                        }
+                        // otherwise the consumer gave up or was exited already, so fall out and...
                     }
-                    // otherwise the consumer gave up or was exited already, so fall out and...
-                }
-                // retry with new tail(snapshot) as was foretold
-                tail = this.tail;
-                if (UPDATE_STATISTICS) spinMisses.increment();
-            } else if (tailNext == null) {
-                // no consumers available; maybe we can start one
-                int tr = tryAllocateThread(growthResistance);
-                if (tr == AT_YES) {
-                    result = EXE_CREATE_THREAD;
-                    break;
-                }
-                if (tr == AT_SHUTDOWN) {
-                    result = EXE_REJECT_SHUTDOWN;
-                    break;
-                }
-                assert tr == AT_NO;
-                // no; try to enqueue
-                if (! NO_QUEUE_LIMIT && ! increaseQueueSize()) {
-                    // queue is full
-                    // OK last effort to create a thread, disregarding growth limit
-                    tr = tryAllocateThread(0.0f);
+                    // retry with new tail(snapshot) as was foretold
+                    tail = this.tail;
+                    if (UPDATE_STATISTICS) spinMisses.increment();
+                } else if (tailNext == null) {
+                    // no consumers available; maybe we can start one
+                    int tr = tryAllocateThread(growthResistance);
                     if (tr == AT_YES) {
                         result = EXE_CREATE_THREAD;
                         break;
@@ -1809,43 +1789,61 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                         break;
                     }
                     assert tr == AT_NO;
-                    result = EXE_REJECT_QUEUE_FULL;
+                    // no; try to enqueue
+                    if (!NO_QUEUE_LIMIT && !increaseQueueSize()) {
+                        // queue is full
+                        // OK last effort to create a thread, disregarding growth limit
+                        tr = tryAllocateThread(0.0f);
+                        if (tr == AT_YES) {
+                            result = EXE_CREATE_THREAD;
+                            break;
+                        }
+                        if (tr == AT_SHUTDOWN) {
+                            result = EXE_REJECT_SHUTDOWN;
+                            break;
+                        }
+                        assert tr == AT_NO;
+                        result = EXE_REJECT_QUEUE_FULL;
+                        break;
+                    }
+                    // queue size increased successfully; we can add to the list
+                    if (node == null) {
+                        // avoid re-allocating TaskNode instances on subsequent iterations
+                        node = new TaskNode(runnable);
+                    }
+                    // state change ex5:
+                    //   tail(snapshot).next ← new task node
+                    // cannot succeed: sh2
+                    // preconditions:
+                    //   tail(snapshot).next = null
+                    //   ex3 failed precondition
+                    //   queue size increased to accommodate node
+                    // postconditions (success):
+                    //   tail(snapshot).next = new task node
+                    if (tail.compareAndSetNext(null, node)) {
+                        // try to update tail to the new node; if this CAS fails then tail already points at past the node
+                        // this is because tail can only ever move forward, and the task list is always strongly connected
+                        compareAndSetTail(tail, node);
+                        result = EXE_OK;
+                        break;
+                    }
+                    // we failed; we have to drop the queue size back down again to compensate before we can retry
+                    if (!NO_QUEUE_LIMIT) decreaseQueueSize();
+                    // retry with new tail(snapshot)
+                    tail = this.tail;
+                    if (UPDATE_STATISTICS) spinMisses.increment();
+                } else {
+                    // no consumers are waiting and the tail(snapshot).next node is non-null and not a task node, therefore it must be a...
+                    assert tailNext instanceof TerminateWaiterNode;
+                    // shutting down
+                    result = EXE_REJECT_SHUTDOWN;
                     break;
                 }
-                // queue size increased successfully; we can add to the list
-                if (node == null) {
-                    // avoid re-allocating TaskNode instances on subsequent iterations
-                    node = new TaskNode(runnable);
-                }
-                // state change ex5:
-                //   tail(snapshot).next ← new task node
-                // cannot succeed: sh2
-                // preconditions:
-                //   tail(snapshot).next = null
-                //   ex3 failed precondition
-                //   queue size increased to accommodate node
-                // postconditions (success):
-                //   tail(snapshot).next = new task node
-                if (tail.compareAndSetNext(null, node)) {
-                    // try to update tail to the new node; if this CAS fails then tail already points at past the node
-                    // this is because tail can only ever move forward, and the task list is always strongly connected
-                    compareAndSetTail(tail, node);
-                    result = EXE_OK;
-                    break;
-                }
-                // we failed; we have to drop the queue size back down again to compensate before we can retry
-                if (! NO_QUEUE_LIMIT) decreaseQueueSize();
-                // retry with new tail(snapshot)
-                tail = this.tail;
-                if (UPDATE_STATISTICS) spinMisses.increment();
-            } else {
-                // no consumers are waiting and the tail(snapshot).next node is non-null and not a task node, therefore it must be a...
-                assert tailNext instanceof TerminateWaiterNode;
-                // shutting down
-                result = EXE_REJECT_SHUTDOWN;
-                break;
             }
+        } finally {
+            if (TAIL_LOCK) tailLock.unlock();
         }
+        if (toUnpark != null) toUnpark.unpark();
         return result;
     }
 
