@@ -1750,9 +1750,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     }
                     // otherwise the consumer gave up or was exited already, so fall out and...
                 }
+                if (UPDATE_STATISTICS) spinMisses.increment();
                 // retry with new tail(snapshot) as was foretold
                 tail = this.tail;
-                if (UPDATE_STATISTICS) spinMisses.increment();
             } else if (tailNext == null) {
                 // no consumers available; maybe we can start one
                 int tr = tryAllocateThread(growthResistance);
@@ -1803,9 +1803,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 }
                 // we failed; we have to drop the queue size back down again to compensate before we can retry
                 if (! NO_QUEUE_LIMIT) decreaseQueueSize();
+                if (UPDATE_STATISTICS) spinMisses.increment();
                 // retry with new tail(snapshot)
                 tail = this.tail;
-                if (UPDATE_STATISTICS) spinMisses.increment();
             } else {
                 if (TAIL_LOCK) unlockTail();
                 // no consumers are waiting and the tail(snapshot).next node is non-null and not a task node, therefore it must be a...
