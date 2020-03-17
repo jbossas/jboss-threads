@@ -1774,9 +1774,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                         }
                         // otherwise the consumer gave up or was exited already, so fall out and...
                     }
+                    if (UPDATE_STATISTICS) spinMisses.increment();
                     // retry with new tail(snapshot) as was foretold
                     tail = this.tail;
-                    if (UPDATE_STATISTICS) spinMisses.increment();
                 } else if (tailNext == null) {
                     // no consumers available; maybe we can start one
                     int tr = tryAllocateThread(growthResistance);
