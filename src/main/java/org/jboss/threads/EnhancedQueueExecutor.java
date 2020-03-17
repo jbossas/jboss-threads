@@ -1717,12 +1717,12 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     private int tryExecute(final Runnable runnable) {
         QNode tailNext;
         PoolThreadNode toUnpark = null;
-        TaskNode tail = this.tail;
         final int result;
         TaskNode node = null;
         ExtendedLock tailLock = this.tailLock;
         if (TAIL_LOCK) tailLock.lock();
         try {
+            TaskNode tail = this.tail;
             for (; ; ) {
                 tailNext = tail.getNext();
                 if (tailNext instanceof TaskNode) {
