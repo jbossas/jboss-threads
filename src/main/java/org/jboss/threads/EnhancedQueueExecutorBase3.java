@@ -46,7 +46,8 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
     /**
      * Attempt to lock frequently-contended operations on the list head.
      */
-    static final boolean HEAD_LOCK = readBooleanPropertyPrefixed("head-lock", true);
+    @SuppressWarnings("unused")
+    static final boolean HEAD_LOCK = readBooleanPropertyPrefixed("head-lock", false);
     /**
      * Use a spin lock for the head lock.
      */
