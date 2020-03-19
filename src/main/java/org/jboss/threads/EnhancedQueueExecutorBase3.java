@@ -21,15 +21,18 @@ package org.jboss.threads;
 import static org.jboss.threads.JBossExecutors.unsafe;
 
 import org.wildfly.common.annotation.NotNull;
+import org.wildfly.common.cpu.ProcessorInfo;
 
 /**
  * EQE base class: head section.
  */
 abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
+    static final long headLockOffset;
     static final long headOffset;
 
     static {
         try {
+            headLockOffset = unsafe.objectFieldOffset(EnhancedQueueExecutorBase3.class.getDeclaredField("headLock"));
             headOffset = unsafe.objectFieldOffset(EnhancedQueueExecutorBase3.class.getDeclaredField("head"));
         } catch (NoSuchFieldException e) {
             throw new NoSuchFieldError(e.getMessage());
@@ -43,15 +46,24 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
     /**
      * Attempt to lock frequently-contended operations on the list head.
      */
-    static final boolean HEAD_LOCK = COMBINED_LOCK || readBooleanPropertyPrefixed("head-lock", true);
+    static final boolean HEAD_LOCK = readBooleanPropertyPrefixed("head-lock", true);
     /**
      * Use a spin lock for the head lock.
      */
+    @SuppressWarnings("unused")
     static final boolean HEAD_SPIN = readBooleanPropertyPrefixed("head-spin", true);
+
+    /**
+     * Number of spins before yielding.
+     */
+    static final int YIELD_SPINS = readIntPropertyPrefixed("lock-yield-spins", ProcessorInfo.availableProcessors() == 1 ? 0 : 128);
 
     // =======================================================
     // Current state fields
     // =======================================================
+
+    @SuppressWarnings("unused") // used by field updater
+    volatile int headLock;
 
     /**
      * The node <em>preceding</em> the head node; this field is not {@code null}.  This is
@@ -71,5 +83,30 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
 
     boolean compareAndSetHead(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
         return unsafe.compareAndSwapObject(this, headOffset, expect, update);
+    }
+
+    // =======================================================
+    // Locks
+    // =======================================================
+
+    final void lockHead() {
+        int spins = 0;
+        for (;;) {
+            if (headLock == 0 && unsafe.compareAndSwapInt(this, headLockOffset, 0, 1)) {
+                return;
+            }
+            if (spins == YIELD_SPINS) {
+                spins = 0;
+                Thread.yield();
+            } else {
+                spins++;
+                JDKSpecific.onSpinWait();
+            }
+        }
+    }
+
+    final void unlockHead() {
+        assert headLock == 1;
+        headLock =  0;
     }
 }

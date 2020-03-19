@@ -54,9 +54,6 @@ import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 import org.wildfly.common.Assert;
 import org.wildfly.common.cpu.ProcessorInfo;
-import org.wildfly.common.lock.ExtendedLock;
-import org.wildfly.common.lock.Locks;
-import org.wildfly.common.lock.SpinLock;
 
 /**
  * A task-or-thread queue backed thread pool executor service.  Tasks are added in a FIFO manner, and consumers in a LIFO manner.
@@ -138,7 +135,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     /**
      * Update the summary statistics.
      */
-    static final boolean UPDATE_STATISTICS = readBooleanPropertyPrefixed("statistics", true);
+    static final boolean UPDATE_STATISTICS = readBooleanPropertyPrefixed("statistics", false);
     /**
      * Suppress queue limit and size tracking for performance.
      */
@@ -190,20 +187,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * The access control context of the creating thread.
      */
     private final AccessControlContext acc;
-
-    // =======================================================
-    // Locks
-    // =======================================================
-
-    /**
-     * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
-     */
-    private final ExtendedLock tailLock = TAIL_LOCK ? TAIL_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
-
-    /**
-     * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
-     */
-    private final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? HEAD_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
 
     // =======================================================
     // Current state fields
@@ -1663,7 +1646,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @return {@code true} if the thread was deallocated, or {@code false} to retry with a new {@code oldStat}
      */
     boolean tryDeallocateThread(long oldStat) {
-        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         // roll back our thread allocation attempt
         // state change ex4:
         //   threadStatus.size ← threadStatus.size - 1
@@ -1689,7 +1671,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @throws RejectedExecutionException if {@code runnable} is not {@code null} and the thread could not be created or started
      */
     boolean doStartThread(Runnable runnable) throws RejectedExecutionException {
-        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         Thread thread;
         try {
             thread = threadFactory.newThread(new ThreadBody(runnable));
@@ -1852,7 +1833,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     void completeTermination() {
-        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         // be kind and un-interrupt the thread for the termination task
         Thread.interrupted();
         final Runnable terminationTask = this.terminationTask;
@@ -2030,30 +2010,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     }
 
     // =======================================================
-    // Locks
-    // =======================================================
-
-    private static boolean currentThreadHolds(final ExtendedLock lock) {
-        return lock != null && lock.isHeldByCurrentThread();
-    }
-
-    final void lockHead() {
-        headLock.lock();
-    }
-
-    final void unlockHead() {
-        headLock.unlock();
-    }
-
-    final void lockTail() {
-        tailLock.lock();
-    }
-
-    final void unlockTail() {
-        tailLock.unlock();
-    }
-
-    // =======================================================
     // Static configuration
     // =======================================================
 
@@ -2062,7 +2018,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     void safeRun(final Runnable task) {
-        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         if (task == null) return;
         final Thread currentThread = Thread.currentThread();
         JBossExecutors.clearContextClassLoader(currentThread);
