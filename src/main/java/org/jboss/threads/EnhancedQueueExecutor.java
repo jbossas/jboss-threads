@@ -1415,16 +1415,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             // main loop
             QNode node;
             processingQueue: for (;;) {
-                if (HEAD_LOCK) {
-                    lockHead();
-                    try {
-                        node = getOrAddNode();
-                    } finally {
-                        unlockHead();
-                    }
-                } else {
-                    node = getOrAddNode();
-                }
+                node = getOrAddNode();
                 if (node instanceof TaskNode) {
                     // task node was removed
                     doRunTask(((TaskNode) node).getAndClearTask());
@@ -1512,12 +1503,14 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             TaskNode head;
             QNode headNext;
             PoolThreadNode newNode = null;
+            if (HEAD_LOCK) lockHead();
             for (;;) {
                 head = EnhancedQueueExecutor.this.head;
                 headNext = head.getNext();
                 if (headNext instanceof TaskNode) {
                     TaskNode taskNode = (TaskNode) headNext;
                     if (compareAndSetHead(head, taskNode)) {
+                        if (HEAD_LOCK) unlockHead();
                         if (! NO_QUEUE_LIMIT) decreaseQueueSize();
                         return taskNode;
                     }
@@ -1527,9 +1520,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     }
                     newNode.setNext(headNext);
                     if (head.compareAndSetNext(headNext, newNode)) {
+                        if (HEAD_LOCK) unlockHead();
                         return newNode;
                     }
                 } else {
+                    if (HEAD_LOCK) unlockHead();
                     assert headNext instanceof TerminateWaiterNode;
                     return headNext;
                 }
