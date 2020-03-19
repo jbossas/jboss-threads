@@ -1707,7 +1707,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     private int tryExecute(final Runnable runnable) {
         QNode tailNext;
         TaskNode tail = this.tail;
-        final int result;
         TaskNode node = null;
         for (;;) {
             tailNext = tail.getNext();
@@ -1754,8 +1753,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     //   retry outer with new tail(snapshot)
                     if (consumerNode.compareAndSetTask(WAITING, runnable)) {
                         consumerNode.unpark();
-                        result = EXE_OK;
-                        break;
+                        return EXE_OK;
                     }
                     // otherwise the consumer gave up or was exited already, so fall out and...
                 }
@@ -1766,12 +1764,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 // no consumers available; maybe we can start one
                 int tr = tryAllocateThread(growthResistance);
                 if (tr == AT_YES) {
-                    result = EXE_CREATE_THREAD;
-                    break;
+                    return EXE_CREATE_THREAD;
                 }
                 if (tr == AT_SHUTDOWN) {
-                    result = EXE_REJECT_SHUTDOWN;
-                    break;
+                    return EXE_REJECT_SHUTDOWN;
                 }
                 assert tr == AT_NO;
                 // no; try to enqueue
@@ -1780,16 +1776,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // OK last effort to create a thread, disregarding growth limit
                     tr = tryAllocateThread(0.0f);
                     if (tr == AT_YES) {
-                        result = EXE_CREATE_THREAD;
-                        break;
+                        return EXE_CREATE_THREAD;
                     }
                     if (tr == AT_SHUTDOWN) {
-                        result = EXE_REJECT_SHUTDOWN;
-                        break;
+                        return EXE_REJECT_SHUTDOWN;
                     }
                     assert tr == AT_NO;
-                    result = EXE_REJECT_QUEUE_FULL;
-                    break;
+                    return EXE_REJECT_QUEUE_FULL;
                 }
                 // queue size increased successfully; we can add to the list
                 if (node == null) {
@@ -1809,8 +1802,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // try to update tail to the new node; if this CAS fails then tail already points at past the node
                     // this is because tail can only ever move forward, and the task list is always strongly connected
                     compareAndSetTail(tail, node);
-                    result = EXE_OK;
-                    break;
+                    return EXE_OK;
                 }
                 // we failed; we have to drop the queue size back down again to compensate before we can retry
                 if (! NO_QUEUE_LIMIT) decreaseQueueSize();
@@ -1821,11 +1813,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 // no consumers are waiting and the tail(snapshot).next node is non-null and not a task node, therefore it must be a...
                 assert tailNext instanceof TerminateWaiterNode;
                 // shutting down
-                result = EXE_REJECT_SHUTDOWN;
-                break;
+                return EXE_REJECT_SHUTDOWN;
             }
         }
-        return result;
+        // not reached
     }
 
     // =======================================================
