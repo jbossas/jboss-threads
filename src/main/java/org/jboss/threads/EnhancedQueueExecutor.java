@@ -2153,19 +2153,16 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         void park(EnhancedQueueExecutor enhancedQueueExecutor) {
             int spins = PARK_SPINS;
-            if (spins > 0) {
-                ThreadLocalRandom tl = ThreadLocalRandom.current();
-                do {
-                    if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
-                        return;
-                    }
-                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
-                        Thread.yield();
-                    } else {
-                        JDKSpecific.onSpinWait();
-                    }
-                    spins--;
-                } while (spins > 0);
+            while (spins > 0) {
+                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    return;
+                }
+                if (spins < YIELD_FACTOR) {
+                    Thread.yield();
+                } else {
+                    JDKSpecific.onSpinWait();
+                }
+                spins--;
             }
             try {
                 if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
@@ -2175,12 +2172,12 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 unsafe.compareAndSwapInt(this, parkedOffset, STATE_PARKED, STATE_NORMAL);
             }
         }
+
         void park(EnhancedQueueExecutor enhancedQueueExecutor, long nanos) {
             long remaining;
             int spins = PARK_SPINS;
             if (spins > 0) {
                 long start = System.nanoTime();
-                ThreadLocalRandom tl = ThreadLocalRandom.current();
                 //note that we don't check the nanotime while spinning
                 //as spin time is short and for our use cases it does not matter if the time
                 //overruns a bit (as the nano time is for thread timeout) we just spin then check
@@ -2189,7 +2186,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
                         return;
                     }
-                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
+                    if (spins < YIELD_FACTOR) {
                         Thread.yield();
                     } else {
                         JDKSpecific.onSpinWait();
