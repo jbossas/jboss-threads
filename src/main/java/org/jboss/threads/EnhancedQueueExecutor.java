@@ -1394,6 +1394,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     final class ThreadBody implements Runnable {
+        private PoolThreadNode poolThreadNode;
         private Runnable initialTask;
 
         ThreadBody(final Runnable initialTask) {
@@ -1405,6 +1406,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          * exit it is removed.
          */
         public void run() {
+            poolThreadNode = new PoolThreadNode(Thread.currentThread());
             final Thread currentThread = Thread.currentThread();
             final LongAdder spinMisses = EnhancedQueueExecutor.this.spinMisses;
             runningThreads.add(currentThread);
@@ -1502,7 +1504,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         private QNode getOrAddNode() {
             TaskNode head;
             QNode headNext;
-            PoolThreadNode newNode = null;
+            PoolThreadNode newNode = poolThreadNode;
             if (HEAD_LOCK) lockHead();
             for (;;) {
                 head = EnhancedQueueExecutor.this.head;
@@ -1515,10 +1517,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                         return taskNode;
                     }
                 } else if (headNext instanceof PoolThreadNode || headNext == null) {
-                    if (newNode == null) {
-                        newNode = new PoolThreadNode(Thread.currentThread());
-                    }
                     newNode.setNext(headNext);
+                    newNode.task = WAITING;
                     if (head.compareAndSetNext(headNext, newNode)) {
                         if (HEAD_LOCK) unlockHead();
                         return newNode;
