@@ -23,7 +23,8 @@ import static java.lang.Math.min;
 import static java.lang.Thread.currentThread;
 import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
-import static java.util.concurrent.locks.LockSupport.*;
+import static java.util.concurrent.locks.LockSupport.parkNanos;
+import static java.util.concurrent.locks.LockSupport.unpark;
 import static org.jboss.threads.JBossExecutors.unsafe;
 
 import java.lang.management.ManagementFactory;
@@ -44,7 +45,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 
 import javax.management.ObjectInstance;
@@ -764,12 +764,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         final Runnable realRunnable = JBossExecutors.classLoaderPreservingTaskUnchecked(runnable);
         int result;
         if (TAIL_LOCK) {
-            Lock lock = this.tailLock;
-            lock.lock();
+            lockTail();
             try {
                 result = tryExecute(realRunnable);
             } finally {
-                lock.unlock();
+                unlockTail();
             }
         } else {
             result = tryExecute(realRunnable);
@@ -1433,7 +1432,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          */
         public void run() {
             final Thread currentThread = Thread.currentThread();
-            final Lock headLock = EnhancedQueueExecutor.this.headLock;
             final LongAdder spinMisses = EnhancedQueueExecutor.this.spinMisses;
             runningThreads.add(currentThread);
 
@@ -1444,11 +1442,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             QNode node;
             processingQueue: for (;;) {
                 if (HEAD_LOCK) {
-                    headLock.lock();
+                    lockHead();
                     try {
                         node = getOrAddNode();
                     } finally {
-                        headLock.unlock();
+                        unlockHead();
                     }
                 } else {
                     node = getOrAddNode();
@@ -2037,6 +2035,22 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     private static boolean currentThreadHolds(final ExtendedLock lock) {
         return lock != null && lock.isHeldByCurrentThread();
+    }
+
+    final void lockHead() {
+        headLock.lock();
+    }
+
+    final void unlockHead() {
+        headLock.unlock();
+    }
+
+    final void lockTail() {
+        tailLock.lock();
+    }
+
+    final void unlockTail() {
+        tailLock.unlock();
     }
 
     // =======================================================
