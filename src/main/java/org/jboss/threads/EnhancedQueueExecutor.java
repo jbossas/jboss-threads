@@ -2153,16 +2153,19 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         void park(EnhancedQueueExecutor enhancedQueueExecutor) {
             int spins = PARK_SPINS;
+            if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                return;
+            }
             while (spins > 0) {
-                if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
-                    return;
-                }
                 if (spins < YIELD_FACTOR) {
                     Thread.yield();
                 } else {
                     JDKSpecific.onSpinWait();
                 }
                 spins--;
+                if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    return;
+                }
             }
             if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) try {
                 LockSupport.park(enhancedQueueExecutor);
@@ -2183,17 +2186,20 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 //as spin time is short and for our use cases it does not matter if the time
                 //overruns a bit (as the nano time is for thread timeout) we just spin then check
                 //to keep performance consistent between the two versions.
-                do {
-                    if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
-                        return;
-                    }
+                if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    return;
+                }
+                while (spins > 0) {
                     if (spins < YIELD_FACTOR) {
                         Thread.yield();
                     } else {
                         JDKSpecific.onSpinWait();
                     }
+                    if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                        return;
+                    }
                     spins--;
-                } while (spins > 0);
+                }
                 remaining = nanos - (System.nanoTime() - start);
                 if (remaining < 0) {
                     return;
