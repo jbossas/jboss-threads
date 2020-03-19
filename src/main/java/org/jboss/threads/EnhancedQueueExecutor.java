@@ -2154,7 +2154,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         void park(EnhancedQueueExecutor enhancedQueueExecutor) {
             int spins = PARK_SPINS;
             while (spins > 0) {
-                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
                     return;
                 }
                 if (spins < YIELD_FACTOR) {
@@ -2164,12 +2164,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 }
                 spins--;
             }
-            try {
-                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
-                    LockSupport.park(enhancedQueueExecutor);
-                }
+            if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) try {
+                LockSupport.park(enhancedQueueExecutor);
             } finally {
-                unsafe.compareAndSwapInt(this, parkedOffset, STATE_PARKED, STATE_NORMAL);
+                // parked can be STATE_PARKED or STATE_UNPARKED, cannot possibly be STATE_NORMAL.
+                // if it's STATE_PARKED, we'd go back to NORMAL since we're not parking anymore.
+                // if it's STATE_UNPARKED, we can still go back to NORMAL because all of our preconditions will be rechecked anyway.
+                parked = STATE_NORMAL;
             }
         }
 
@@ -2183,7 +2184,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 //overruns a bit (as the nano time is for thread timeout) we just spin then check
                 //to keep performance consistent between the two versions.
                 do {
-                    if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
                         return;
                     }
                     if (spins < YIELD_FACTOR) {
@@ -2200,17 +2201,18 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             } else {
                 remaining = nanos;
             }
-            try {
-                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
-                    LockSupport.parkNanos(enhancedQueueExecutor, remaining);
-                }
+            if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) try {
+                LockSupport.parkNanos(enhancedQueueExecutor, remaining);
             } finally {
-                unsafe.compareAndSwapInt(this, parkedOffset, STATE_PARKED, STATE_NORMAL);
+                // parked can be STATE_PARKED or STATE_UNPARKED, cannot possibly be STATE_NORMAL.
+                // if it's STATE_PARKED, we'd go back to NORMAL since we're not parking anymore.
+                // if it's STATE_UNPARKED, we can still go back to NORMAL because all of our preconditions will be rechecked anyway.
+                parked = STATE_NORMAL;
             }
         }
 
         void unpark() {
-            if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_UNPARKED)) {
+            if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_UNPARKED)) {
                 return;
             }
             LockSupport.unpark(thread);
