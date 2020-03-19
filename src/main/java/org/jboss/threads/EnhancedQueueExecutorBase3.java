@@ -1,6 +1,6 @@
 /*
  * JBoss, Home of Professional Open Source.
- * Copyright 2018 Red Hat, Inc., and individual contributors
+ * Copyright 2020 Red Hat, Inc., and individual contributors
  * as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,12 +27,10 @@ import org.wildfly.common.cpu.ProcessorInfo;
  * EQE base class: head section.
  */
 abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
-    static final long headLockOffset;
     static final long headOffset;
 
     static {
         try {
-            headLockOffset = unsafe.objectFieldOffset(EnhancedQueueExecutorBase3.class.getDeclaredField("headLock"));
             headOffset = unsafe.objectFieldOffset(EnhancedQueueExecutorBase3.class.getDeclaredField("head"));
         } catch (NoSuchFieldException e) {
             throw new NoSuchFieldError(e.getMessage());
@@ -63,9 +61,6 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
     // Current state fields
     // =======================================================
 
-    @SuppressWarnings("unused") // used by field updater
-    volatile int headLock;
-
     /**
      * The node <em>preceding</em> the head node; this field is not {@code null}.  This is
      * the removal point for tasks (and the insertion point for waiting threads).
@@ -84,30 +79,5 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
 
     boolean compareAndSetHead(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
         return unsafe.compareAndSwapObject(this, headOffset, expect, update);
-    }
-
-    // =======================================================
-    // Locks
-    // =======================================================
-
-    final void lockHead() {
-        int spins = 0;
-        for (;;) {
-            if (headLock == 0 && unsafe.compareAndSwapInt(this, headLockOffset, 0, 1)) {
-                return;
-            }
-            if (spins == YIELD_SPINS) {
-                spins = 0;
-                Thread.yield();
-            } else {
-                spins++;
-                JDKSpecific.onSpinWait();
-            }
-        }
-    }
-
-    final void unlockHead() {
-        assert headLock == 1;
-        headLock =  0;
     }
 }
