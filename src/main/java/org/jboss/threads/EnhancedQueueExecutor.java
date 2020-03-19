@@ -1525,6 +1525,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     return headNext;
                 }
                 if (UPDATE_STATISTICS) spinMisses.increment();
+                JDKSpecific.onSpinWait();
             }
         }
 
