@@ -40,4 +40,8 @@ final class JDKSpecific {
             default: throw Assert.impossibleSwitchCase(timeUnit);
         }
     }
+
+    static void onSpinWait() {
+        // no operation
+    }
 }

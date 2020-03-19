@@ -23,7 +23,8 @@ import static java.lang.Math.min;
 import static java.lang.Thread.currentThread;
 import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
-import static java.util.concurrent.locks.LockSupport.*;
+import static java.util.concurrent.locks.LockSupport.parkNanos;
+import static java.util.concurrent.locks.LockSupport.unpark;
 import static org.jboss.threads.JBossExecutors.unsafe;
 
 import java.lang.management.ManagementFactory;
@@ -44,7 +45,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 
 import javax.management.ObjectInstance;
@@ -54,9 +54,6 @@ import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 import org.wildfly.common.Assert;
 import org.wildfly.common.cpu.ProcessorInfo;
-import org.wildfly.common.lock.ExtendedLock;
-import org.wildfly.common.lock.Locks;
-import org.wildfly.common.lock.SpinLock;
 
 /**
  * A task-or-thread queue backed thread pool executor service.  Tasks are added in a FIFO manner, and consumers in a LIFO manner.
@@ -138,7 +135,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     /**
      * Update the summary statistics.
      */
-    static final boolean UPDATE_STATISTICS = readBooleanPropertyPrefixed("statistics", true);
+    static final boolean UPDATE_STATISTICS = readBooleanPropertyPrefixed("statistics", false);
     /**
      * Suppress queue limit and size tracking for performance.
      */
@@ -190,20 +187,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * The access control context of the creating thread.
      */
     private final AccessControlContext acc;
-
-    // =======================================================
-    // Locks
-    // =======================================================
-
-    /**
-     * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
-     */
-    private final ExtendedLock tailLock = TAIL_LOCK ? TAIL_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
-
-    /**
-     * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
-     */
-    private final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? HEAD_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
 
     // =======================================================
     // Current state fields
@@ -763,17 +746,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         Assert.checkNotNullParam("runnable", runnable);
         final Runnable realRunnable = JBossExecutors.classLoaderPreservingTaskUnchecked(runnable);
         int result;
-        if (TAIL_LOCK) {
-            Lock lock = this.tailLock;
-            lock.lock();
-            try {
-                result = tryExecute(realRunnable);
-            } finally {
-                lock.unlock();
-            }
-        } else {
-            result = tryExecute(realRunnable);
-        }
+        result = tryExecute(realRunnable);
         boolean ok = false;
         if (result == EXE_OK) {
             // last check to ensure that there is at least one existent thread to avoid rare thread timeout race condition
@@ -1421,6 +1394,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     final class ThreadBody implements Runnable {
+        private PoolThreadNode poolThreadNode;
         private Runnable initialTask;
 
         ThreadBody(final Runnable initialTask) {
@@ -1432,8 +1406,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          * exit it is removed.
          */
         public void run() {
+            poolThreadNode = new PoolThreadNode(Thread.currentThread());
             final Thread currentThread = Thread.currentThread();
-            final Lock headLock = EnhancedQueueExecutor.this.headLock;
             final LongAdder spinMisses = EnhancedQueueExecutor.this.spinMisses;
             runningThreads.add(currentThread);
 
@@ -1443,16 +1417,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             // main loop
             QNode node;
             processingQueue: for (;;) {
-                if (HEAD_LOCK) {
-                    headLock.lock();
-                    try {
-                        node = getOrAddNode();
-                    } finally {
-                        headLock.unlock();
-                    }
-                } else {
-                    node = getOrAddNode();
-                }
+                node = getOrAddNode();
                 if (node instanceof TaskNode) {
                     // task node was removed
                     doRunTask(((TaskNode) node).getAndClearTask());
@@ -1539,7 +1504,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         private QNode getOrAddNode() {
             TaskNode head;
             QNode headNext;
-            PoolThreadNode newNode = null;
+            PoolThreadNode newNode = poolThreadNode;
             for (;;) {
                 head = EnhancedQueueExecutor.this.head;
                 headNext = head.getNext();
@@ -1550,10 +1515,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                         return taskNode;
                     }
                 } else if (headNext instanceof PoolThreadNode || headNext == null) {
-                    if (newNode == null) {
-                        newNode = new PoolThreadNode(Thread.currentThread());
-                    }
                     newNode.setNext(headNext);
+                    newNode.task = WAITING;
                     if (head.compareAndSetNext(headNext, newNode)) {
                         return newNode;
                     }
@@ -1562,6 +1525,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     return headNext;
                 }
                 if (UPDATE_STATISTICS) spinMisses.increment();
+                JDKSpecific.onSpinWait();
             }
         }
 
@@ -1665,7 +1629,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @return {@code true} if the thread was deallocated, or {@code false} to retry with a new {@code oldStat}
      */
     boolean tryDeallocateThread(long oldStat) {
-        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         // roll back our thread allocation attempt
         // state change ex4:
         //   threadStatus.size ← threadStatus.size - 1
@@ -1691,7 +1654,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @throws RejectedExecutionException if {@code runnable} is not {@code null} and the thread could not be created or started
      */
     boolean doStartThread(Runnable runnable) throws RejectedExecutionException {
-        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         Thread thread;
         try {
             thread = threadFactory.newThread(new ThreadBody(runnable));
@@ -1727,8 +1689,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     private int tryExecute(final Runnable runnable) {
         QNode tailNext;
+        if (TAIL_LOCK) lockTail();
         TaskNode tail = this.tail;
-        final int result;
         TaskNode node = null;
         for (;;) {
             tailNext = tail.getNext();
@@ -1774,25 +1736,25 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // post-actions (fail):
                     //   retry outer with new tail(snapshot)
                     if (consumerNode.compareAndSetTask(WAITING, runnable)) {
+                        if (TAIL_LOCK) unlockTail();
                         consumerNode.unpark();
-                        result = EXE_OK;
-                        break;
+                        return EXE_OK;
                     }
                     // otherwise the consumer gave up or was exited already, so fall out and...
                 }
+                if (UPDATE_STATISTICS) spinMisses.increment();
                 // retry with new tail(snapshot) as was foretold
                 tail = this.tail;
-                if (UPDATE_STATISTICS) spinMisses.increment();
             } else if (tailNext == null) {
                 // no consumers available; maybe we can start one
                 int tr = tryAllocateThread(growthResistance);
                 if (tr == AT_YES) {
-                    result = EXE_CREATE_THREAD;
-                    break;
+                    if (TAIL_LOCK) unlockTail();
+                    return EXE_CREATE_THREAD;
                 }
                 if (tr == AT_SHUTDOWN) {
-                    result = EXE_REJECT_SHUTDOWN;
-                    break;
+                    if (TAIL_LOCK) unlockTail();
+                    return EXE_REJECT_SHUTDOWN;
                 }
                 assert tr == AT_NO;
                 // no; try to enqueue
@@ -1800,17 +1762,15 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // queue is full
                     // OK last effort to create a thread, disregarding growth limit
                     tr = tryAllocateThread(0.0f);
+                    if (TAIL_LOCK) unlockTail();
                     if (tr == AT_YES) {
-                        result = EXE_CREATE_THREAD;
-                        break;
+                        return EXE_CREATE_THREAD;
                     }
                     if (tr == AT_SHUTDOWN) {
-                        result = EXE_REJECT_SHUTDOWN;
-                        break;
+                        return EXE_REJECT_SHUTDOWN;
                     }
                     assert tr == AT_NO;
-                    result = EXE_REJECT_QUEUE_FULL;
-                    break;
+                    return EXE_REJECT_QUEUE_FULL;
                 }
                 // queue size increased successfully; we can add to the list
                 if (node == null) {
@@ -1830,23 +1790,23 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // try to update tail to the new node; if this CAS fails then tail already points at past the node
                     // this is because tail can only ever move forward, and the task list is always strongly connected
                     compareAndSetTail(tail, node);
-                    result = EXE_OK;
-                    break;
+                    if (TAIL_LOCK) unlockTail();
+                    return EXE_OK;
                 }
                 // we failed; we have to drop the queue size back down again to compensate before we can retry
                 if (! NO_QUEUE_LIMIT) decreaseQueueSize();
+                if (UPDATE_STATISTICS) spinMisses.increment();
                 // retry with new tail(snapshot)
                 tail = this.tail;
-                if (UPDATE_STATISTICS) spinMisses.increment();
             } else {
+                if (TAIL_LOCK) unlockTail();
                 // no consumers are waiting and the tail(snapshot).next node is non-null and not a task node, therefore it must be a...
                 assert tailNext instanceof TerminateWaiterNode;
                 // shutting down
-                result = EXE_REJECT_SHUTDOWN;
-                break;
+                return EXE_REJECT_SHUTDOWN;
             }
         }
-        return result;
+        // not reached
     }
 
     // =======================================================
@@ -1854,7 +1814,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     void completeTermination() {
-        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         // be kind and un-interrupt the thread for the termination task
         Thread.interrupted();
         final Runnable terminationTask = this.terminationTask;
@@ -2032,14 +1991,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     }
 
     // =======================================================
-    // Locks
-    // =======================================================
-
-    private static boolean currentThreadHolds(final ExtendedLock lock) {
-        return lock != null && lock.isHeldByCurrentThread();
-    }
-
-    // =======================================================
     // Static configuration
     // =======================================================
 
@@ -2048,7 +1999,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     void safeRun(final Runnable task) {
-        assert ! currentThreadHolds(headLock) && ! currentThreadHolds(tailLock);
         if (task == null) return;
         final Thread currentThread = Thread.currentThread();
         JBossExecutors.clearContextClassLoader(currentThread);
@@ -2134,7 +2084,21 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
     }
 
-    static final class PoolThreadNode extends QNode {
+    /** Padding between PoolThreadNode task and parked fields and QNode.next */
+    static abstract class PoolThreadNodeBase extends QNode {
+        /**
+         * Padding fields.
+         */
+        @SuppressWarnings("unused")
+        int p00, p01, p02, p03,
+            p04, p05, p06, p07,
+            p08, p09, p0A, p0B,
+            p0C, p0D, p0E, p0F;
+
+        PoolThreadNodeBase() {}
+    }
+
+    static final class PoolThreadNode extends PoolThreadNodeBase {
 
         /**
          * Thread is running normally.
@@ -2195,45 +2159,53 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         void park(EnhancedQueueExecutor enhancedQueueExecutor) {
             int spins = PARK_SPINS;
-            if (spins > 0) {
-                ThreadLocalRandom tl = ThreadLocalRandom.current();
-                do {
-                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
-                        Thread.yield();
-                    }
-                    if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
-                        return;
-                    }
-                    spins--;
-                } while (spins > 0);
+            if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                return;
             }
-            try {
-                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
-                    LockSupport.park(enhancedQueueExecutor);
+            while (spins > 0) {
+                if (spins < YIELD_FACTOR) {
+                    Thread.yield();
+                } else {
+                    JDKSpecific.onSpinWait();
                 }
+                spins--;
+                if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    return;
+                }
+            }
+            if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) try {
+                LockSupport.park(enhancedQueueExecutor);
             } finally {
-                unsafe.compareAndSwapInt(this, parkedOffset, STATE_PARKED, STATE_NORMAL);
+                // parked can be STATE_PARKED or STATE_UNPARKED, cannot possibly be STATE_NORMAL.
+                // if it's STATE_PARKED, we'd go back to NORMAL since we're not parking anymore.
+                // if it's STATE_UNPARKED, we can still go back to NORMAL because all of our preconditions will be rechecked anyway.
+                parked = STATE_NORMAL;
             }
         }
+
         void park(EnhancedQueueExecutor enhancedQueueExecutor, long nanos) {
             long remaining;
             int spins = PARK_SPINS;
             if (spins > 0) {
                 long start = System.nanoTime();
-                ThreadLocalRandom tl = ThreadLocalRandom.current();
                 //note that we don't check the nanotime while spinning
                 //as spin time is short and for our use cases it does not matter if the time
                 //overruns a bit (as the nano time is for thread timeout) we just spin then check
                 //to keep performance consistent between the two versions.
-                do {
-                    if (tl.nextInt(PARK_SPINS) < YIELD_FACTOR) {
+                if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    return;
+                }
+                while (spins > 0) {
+                    if (spins < YIELD_FACTOR) {
                         Thread.yield();
+                    } else {
+                        JDKSpecific.onSpinWait();
                     }
-                    if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
                         return;
                     }
                     spins--;
-                } while (spins > 0);
+                }
                 remaining = nanos - (System.nanoTime() - start);
                 if (remaining < 0) {
                     return;
@@ -2241,17 +2213,18 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             } else {
                 remaining = nanos;
             }
-            try {
-                if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) {
-                    LockSupport.parkNanos(enhancedQueueExecutor, remaining);
-                }
+            if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) try {
+                LockSupport.parkNanos(enhancedQueueExecutor, remaining);
             } finally {
-                unsafe.compareAndSwapInt(this, parkedOffset, STATE_PARKED, STATE_NORMAL);
+                // parked can be STATE_PARKED or STATE_UNPARKED, cannot possibly be STATE_NORMAL.
+                // if it's STATE_PARKED, we'd go back to NORMAL since we're not parking anymore.
+                // if it's STATE_UNPARKED, we can still go back to NORMAL because all of our preconditions will be rechecked anyway.
+                parked = STATE_NORMAL;
             }
         }
 
         void unpark() {
-            if (unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_UNPARKED)) {
+            if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_UNPARKED)) {
                 return;
             }
             LockSupport.unpark(thread);
