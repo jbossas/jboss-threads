@@ -38,6 +38,14 @@ abstract class EnhancedQueueExecutorBase0 extends AbstractExecutorService {
 
     EnhancedQueueExecutorBase0() {}
 
+    static int readIntPropertyPrefixed(String name, int defVal) {
+        try {
+            return Integer.parseInt(readPropertyPrefixed(name, Integer.toString(defVal)));
+        } catch (NumberFormatException ignored) {
+            return defVal;
+        }
+    }
+
     static boolean readBooleanPropertyPrefixed(String name, boolean defVal) {
         return Boolean.parseBoolean(readPropertyPrefixed(name, Boolean.toString(defVal)));
     }

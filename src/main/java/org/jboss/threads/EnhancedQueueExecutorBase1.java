@@ -18,22 +18,22 @@
 
 package org.jboss.threads;
 
+import static org.jboss.threads.EnhancedQueueExecutorBase3.YIELD_SPINS;
 import static org.jboss.threads.JBossExecutors.unsafe;
 
 import org.wildfly.common.annotation.NotNull;
-import org.wildfly.common.lock.ExtendedLock;
-import org.wildfly.common.lock.SpinLock;
-import org.wildfly.common.lock.Locks;
 
 /**
  * EQE base class: tail section.
  */
 abstract class EnhancedQueueExecutorBase1 extends EnhancedQueueExecutorBase0 {
 
+    static final long tailLockOffset;
     static final long tailOffset;
 
     static {
         try {
+            tailLockOffset = unsafe.objectFieldOffset(EnhancedQueueExecutorBase1.class.getDeclaredField("tailLock"));
             tailOffset = unsafe.objectFieldOffset(EnhancedQueueExecutorBase1.class.getDeclaredField("tail"));
         } catch (NoSuchFieldException e) {
             throw new NoSuchFieldError(e.getMessage());
@@ -47,27 +47,27 @@ abstract class EnhancedQueueExecutorBase1 extends EnhancedQueueExecutorBase0 {
     /**
      * Establish a combined head/tail lock.
      */
+    @SuppressWarnings("unused")
     static final boolean COMBINED_LOCK = readBooleanPropertyPrefixed("combined-lock", false);
 
     /**
      * Use a spin lock for the tail lock.
      */
-    static final boolean TAIL_SPIN = ! COMBINED_LOCK && readBooleanPropertyPrefixed("tail-spin", false);
+    @SuppressWarnings("unused")
+    static final boolean TAIL_SPIN = readBooleanPropertyPrefixed("tail-spin", false);
 
     /**
      * Attempt to lock frequently-contended operations on the list tail.  This defaults to {@code true} because
      * moderate contention among 8 CPUs can result in thousands of spin misses per execution.
      */
-    static final boolean TAIL_LOCK = COMBINED_LOCK || readBooleanPropertyPrefixed("tail-lock", true);
-
-    /**
-     * The tail lock.  Only used if {@link #TAIL_LOCK} is {@code true}.
-     */
-    final ExtendedLock tailLock = TAIL_LOCK ? TAIL_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
+    static final boolean TAIL_LOCK = readBooleanPropertyPrefixed("tail-lock", true);
 
     // =======================================================
     // Current state fields
     // =======================================================
+
+    @SuppressWarnings("unused") // used by field updater
+    volatile int tailLock;
 
     /**
      * The node <em>preceding</em> the tail node; this field is not {@code null}.  This
@@ -84,6 +84,31 @@ abstract class EnhancedQueueExecutorBase1 extends EnhancedQueueExecutorBase0 {
     // =======================================================
 
     void compareAndSetTail(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
-        unsafe.compareAndSwapObject(this, tailOffset, expect, update);
+        if (tail == expect) unsafe.compareAndSwapObject(this, tailOffset, expect, update);
+    }
+
+    // =======================================================
+    // Locks
+    // =======================================================
+
+    final void lockTail() {
+        int spins = 0;
+        for (;;) {
+            if (tailLock == 0 && unsafe.compareAndSwapInt(this, tailLockOffset, 0, 1)) {
+                return;
+            }
+            if (spins == YIELD_SPINS) {
+                spins = 0;
+                Thread.yield();
+            } else {
+                spins++;
+                JDKSpecific.onSpinWait();
+            }
+        }
+    }
+
+    final void unlockTail() {
+        assert tailLock == 1;
+        tailLock =  0;
     }
 }

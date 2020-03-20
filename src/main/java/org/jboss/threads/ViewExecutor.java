@@ -45,7 +45,7 @@ public final class ViewExecutor extends AbstractExecutorService {
     private static final int ST_SHUTDOWN_INT_REQ = 2;
     private static final int ST_STOPPED = 3;
 
-    private ViewExecutor(final Builder builder) {
+    ViewExecutor(final Builder builder) {
         delegate = builder.getDelegate();
         maxCount = (short) builder.getMaxSize();
         final int queueLimit = builder.getQueueLimit();
