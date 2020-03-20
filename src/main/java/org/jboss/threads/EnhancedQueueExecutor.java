@@ -1725,6 +1725,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 // post-actions (fail):
                 //   retry with new tail(snapshot)
                 if (tail.compareAndSetNext(tailNext, tailNextNext)) {
+                    assert tail instanceof TaskNode && tail.task == null;
                     PoolThreadNode consumerNode = (PoolThreadNode) tailNext;
                     // state change ex2:
                     //   tail(snapshot).next(snapshot).task ← runnable
