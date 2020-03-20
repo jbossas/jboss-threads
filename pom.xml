@@ -49,6 +49,13 @@
         </license>
     </licenses>
 
+    <scm>
+        <url>https://github.com/jbossas/jboss-threads</url>
+        <connection>https://github.com/jbossas/jboss-threads.git</connection>
+        <developerConnection>scm:git:git@github.com:jbossas/jboss-threads.git</developerConnection>
+        <tag>HEAD</tag>
+    </scm>
+
     <properties>
         <test.level>INFO</test.level>
 
@@ -76,6 +83,13 @@
             <artifactId>svm</artifactId>
             <version>19.3.1</version>
             <scope>provided</scope>
+            <!-- We only want the included annotations -->
+            <exclusions>
+                <exclusion>
+                    <artifactId>*</artifactId>
+                    <groupId>*</groupId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.jboss.logging</groupId>
