@@ -1516,7 +1516,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     if (newNode == null) {
                         newNode = new PoolThreadNode(Thread.currentThread());
                     }
-                    newNode.setNext(headNext);
+                    newNode.setNextRelaxed(headNext);
                     if (head.compareAndSetNext(headNext, newNode)) {
                         return newNode;
                     }
@@ -2082,6 +2082,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         void setNext(final QNode node) {
             next = node;
+        }
+
+        void setNextRelaxed(final QNode node) {
+            unsafe.putObject(this, nextOffset, node);
         }
     }
 
