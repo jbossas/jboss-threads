@@ -1,6 +1,6 @@
 /*
  * JBoss, Home of Professional Open Source.
- * Copyright 2018 Red Hat, Inc., and individual contributors
+ * Copyright 2020 Red Hat, Inc., and individual contributors
  * as indicated by the @author tags.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,9 +21,7 @@ package org.jboss.threads;
 import static org.jboss.threads.JBossExecutors.unsafe;
 
 import org.wildfly.common.annotation.NotNull;
-import org.wildfly.common.lock.ExtendedLock;
-import org.wildfly.common.lock.SpinLock;
-import org.wildfly.common.lock.Locks;
+import org.wildfly.common.cpu.ProcessorInfo;
 
 /**
  * EQE base class: head section.
@@ -46,15 +44,18 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
     /**
      * Attempt to lock frequently-contended operations on the list head.
      */
-    static final boolean HEAD_LOCK = COMBINED_LOCK || readBooleanPropertyPrefixed("head-lock", true);
+    @SuppressWarnings("unused")
+    static final boolean HEAD_LOCK = readBooleanPropertyPrefixed("head-lock", false);
     /**
      * Use a spin lock for the head lock.
      */
+    @SuppressWarnings("unused")
     static final boolean HEAD_SPIN = readBooleanPropertyPrefixed("head-spin", true);
+
     /**
-     * The head lock.  Only used if {@link #HEAD_LOCK} is {@code true}.
+     * Number of spins before yielding.
      */
-    final ExtendedLock headLock = COMBINED_LOCK ? tailLock : HEAD_LOCK ? HEAD_SPIN ? new SpinLock() : Locks.reentrantLock() : null;
+    static final int YIELD_SPINS = readIntPropertyPrefixed("lock-yield-spins", ProcessorInfo.availableProcessors() == 1 ? 0 : 128);
 
     // =======================================================
     // Current state fields
