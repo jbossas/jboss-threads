@@ -635,6 +635,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         /**
          * Set the maximum queue size.
+         * This has no impact when {@code jboss.threads.eqe.unlimited-queue} is set.
          *
          * @param maxQueueSize the maximum queue size (must be ≥ 0)
          * @return this builder
@@ -1296,10 +1297,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     /**
      * Get an estimate of the current queue size.
      *
-     * @return an estimate of the current queue size
+     * @return an estimate of the current queue size or -1 when {@code jboss.threads.eqe.unlimited-queue} is enabled
      */
     public int getQueueSize() {
-        return currentQueueSizeOf(queueSize);
+        return NO_QUEUE_LIMIT ? -1 : currentQueueSizeOf(queueSize);
     }
 
     /**
@@ -1308,52 +1309,56 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @return an estimate of the peak number of threads that the pool has ever held
      */
     public int getLargestPoolSize() {
-        return peakThreadCount;
+        return UPDATE_STATISTICS ? peakThreadCount : -1;
     }
 
     /**
      * Get an estimate of the number of threads which are currently doing work on behalf of the thread pool.
      *
-     * @return the active count estimate
+     * @return the active count estimate or -1 when {@code jboss.threads.eqe.statistics.active-count} is disabled
      */
     public int getActiveCount() {
-        return activeCount;
+        return UPDATE_ACTIVE_COUNT ? activeCount : -1;
     }
 
     /**
      * Get an estimate of the peak size of the queue.
      *
-     * @return an estimate of the peak size of the queue
+     * return an estimate of the peak size of the queue or -1 when {@code jboss.threads.eqe.statistics}
+     * is disabled or {@code jboss.threads.eqe.unlimited-queue} is enabled
      */
     public int getLargestQueueSize() {
-        return peakQueueSize;
+        return UPDATE_STATISTICS && !NO_QUEUE_LIMIT ? peakQueueSize : -1;
     }
 
     /**
      * Get an estimate of the total number of tasks ever submitted to this thread pool.
      *
      * @return an estimate of the total number of tasks ever submitted to this thread pool
+     * or -1 when {@code jboss.threads.eqe.statistics} is disabled
      */
     public long getSubmittedTaskCount() {
-        return submittedTaskCounter.longValue();
+        return UPDATE_STATISTICS ? submittedTaskCounter.longValue() : -1;
     }
 
     /**
      * Get an estimate of the total number of tasks ever rejected by this thread pool for any reason.
      *
      * @return an estimate of the total number of tasks ever rejected by this thread pool
+     * or -1 when {@code jboss.threads.eqe.statistics} is disabled
      */
     public long getRejectedTaskCount() {
-        return rejectedTaskCounter.longValue();
+        return UPDATE_STATISTICS ? rejectedTaskCounter.longValue() : -1;
     }
 
     /**
      * Get an estimate of the number of tasks completed by this thread pool.
      *
      * @return an estimate of the number of tasks completed by this thread pool
+     * or -1 when {@code jboss.threads.eqe.statistics} is disabled
      */
     public long getCompletedTaskCount() {
-        return completedTaskCounter.longValue();
+        return UPDATE_STATISTICS ? completedTaskCounter.longValue() : -1;
     }
 
     /**
