@@ -137,6 +137,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      */
     static final boolean UPDATE_STATISTICS = readBooleanPropertyPrefixed("statistics", false);
     /**
+     * Maintain an estimate of the number of threads which are currently doing work on behalf of the thread pool.
+     */
+    static final boolean UPDATE_ACTIVE_COUNT =
+            UPDATE_STATISTICS || readBooleanPropertyPrefixed("statistics.active-count", false);
+    /**
      * Suppress queue limit and size tracking for performance.
      */
     static final boolean NO_QUEUE_LIMIT = readBooleanPropertyPrefixed("unlimited-queue", false);
@@ -1553,11 +1558,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 } else {
                     Thread.interrupted();
                 }
-                if (UPDATE_STATISTICS) incrementActiveCount();
+                if (UPDATE_ACTIVE_COUNT) incrementActiveCount();
                 safeRun(task);
-                if (UPDATE_STATISTICS) {
+                if (UPDATE_ACTIVE_COUNT) {
                     decrementActiveCount();
-                    completedTaskCounter.increment();
+                    if (UPDATE_STATISTICS) {
+                        completedTaskCounter.increment();
+                    }
                 }
             }
         }
