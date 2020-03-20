@@ -2147,7 +2147,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         boolean compareAndSetTask(final Runnable expect, final Runnable update) {
-            return unsafe.compareAndSwapObject(this, taskOffset, expect, update);
+            return task == expect && unsafe.compareAndSwapObject(this, taskOffset, expect, update);
         }
 
         Runnable getTask() {
