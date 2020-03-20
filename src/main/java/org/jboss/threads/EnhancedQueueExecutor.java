@@ -1503,6 +1503,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             TaskNode head;
             QNode headNext;
             PoolThreadNode newNode = null;
+            int spins = PARK_SPINS;
             for (;;) {
                 head = EnhancedQueueExecutor.this.head;
                 headNext = head.getNext();
@@ -1512,6 +1513,14 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                         if (! NO_QUEUE_LIMIT) decreaseQueueSize();
                         return taskNode;
                     }
+                } else if (headNext == null && spins > 0) {
+                    // active wait for a few moments, but don't count as a spin miss
+                    if (spins-- <= YIELD_FACTOR) {
+                        Thread.yield();
+                    } else {
+                        JDKSpecific.onSpinWait();
+                    }
+                    continue;
                 } else if (headNext instanceof PoolThreadNode || headNext == null) {
                     if (newNode == null) {
                         newNode = new PoolThreadNode(Thread.currentThread());
