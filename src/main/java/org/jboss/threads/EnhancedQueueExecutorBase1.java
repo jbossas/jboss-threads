@@ -94,10 +94,8 @@ abstract class EnhancedQueueExecutorBase1 extends EnhancedQueueExecutorBase0 {
     final void lockTail() {
         int spins = 0;
         for (;;) {
-            if (tailLock == 0) {
-                if (unsafe.compareAndSwapInt(this, tailLockOffset, 0, 1)) {
-                    return;
-                }
+            if (tailLock == 0 && unsafe.compareAndSwapInt(this, tailLockOffset, 0, 1)) {
+                return;
             }
             if (spins == YIELD_SPINS) {
                 spins = 0;
