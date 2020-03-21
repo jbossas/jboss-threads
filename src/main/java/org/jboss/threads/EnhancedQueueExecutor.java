@@ -1422,10 +1422,12 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             // run the initial task
             doRunTask(getAndClearInitialTask());
 
+            // Eagerly allocate a PoolThreadNode for the next time it's needed
+            PoolThreadNode nextPoolThreadNode = new PoolThreadNode(currentThread);
             // main loop
             QNode node;
             processingQueue: for (;;) {
-                node = getOrAddNode();
+                node = getOrAddNode(nextPoolThreadNode);
                 if (node instanceof TaskNode) {
                     // task node was removed
                     doRunTask(((TaskNode) node).getAndClearTask());
@@ -1433,6 +1435,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 } else if (node instanceof PoolThreadNode) {
                     // pool thread node was added
                     final PoolThreadNode newNode = (PoolThreadNode) node;
+                    assert newNode == nextPoolThreadNode;
+                    // nextPoolThreadNode has been added to the queue, a new node is required for next time.
+                    nextPoolThreadNode = new PoolThreadNode(currentThread);
                     // at this point, we are registered into the queue
                     long start = System.nanoTime();
                     long elapsed = 0L;
@@ -1509,10 +1514,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             //throw Assert.unreachableCode();
         }
 
-        private QNode getOrAddNode() {
+        private QNode getOrAddNode(PoolThreadNode nextPoolThreadNode) {
             TaskNode head;
             QNode headNext;
-            PoolThreadNode newNode = null;
             int spins = PARK_SPINS;
             for (;;) {
                 head = EnhancedQueueExecutor.this.head;
@@ -1532,12 +1536,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     }
                     continue;
                 } else if (headNext instanceof PoolThreadNode || headNext == null) {
-                    if (newNode == null) {
-                        newNode = new PoolThreadNode(Thread.currentThread());
-                    }
-                    newNode.setNextRelaxed(headNext);
-                    if (head.compareAndSetNext(headNext, newNode)) {
-                        return newNode;
+                    nextPoolThreadNode.setNextRelaxed(headNext);
+                    if (head.compareAndSetNext(headNext, nextPoolThreadNode)) {
+                        return nextPoolThreadNode;
                     }
                 } else {
                     assert headNext instanceof TerminateWaiterNode;
