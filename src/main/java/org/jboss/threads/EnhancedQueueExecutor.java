@@ -1432,10 +1432,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // task node was removed
                     doRunTask(((TaskNode) node).getAndClearTask());
                     continue;
-                } else if (node instanceof PoolThreadNode) {
+                } else if (node == nextPoolThreadNode) {
                     // pool thread node was added
-                    final PoolThreadNode newNode = (PoolThreadNode) node;
-                    assert newNode == nextPoolThreadNode;
+                    final PoolThreadNode newNode = nextPoolThreadNode;
                     // nextPoolThreadNode has been added to the queue, a new node is required for next time.
                     nextPoolThreadNode = new PoolThreadNode(currentThread);
                     // at this point, we are registered into the queue
