@@ -2107,7 +2107,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          * Padding fields.
          */
         @SuppressWarnings("unused")
-        int p00, p01, p02, p03,
+        long p00, p01, p02, p03,
             p04, p05, p06, p07,
             p08, p09, p0A, p0B,
             p0C, p0D, p0E, p0F;
@@ -2115,7 +2115,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         PoolThreadNodeBase() {}
     }
 
-    static final class PoolThreadNode extends PoolThreadNodeBase {
+    static abstract class PoolThreadNodeBase1 extends PoolThreadNodeBase {
 
         /**
          * Thread is running normally.
@@ -2139,8 +2139,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         static {
             try {
-                taskOffset = unsafe.objectFieldOffset(PoolThreadNode.class.getDeclaredField("task"));
-                parkedOffset = unsafe.objectFieldOffset(PoolThreadNode.class.getDeclaredField("parked"));
+                taskOffset = unsafe.objectFieldOffset(PoolThreadNodeBase1.class.getDeclaredField("task"));
+                parkedOffset = unsafe.objectFieldOffset(PoolThreadNodeBase1.class.getDeclaredField("parked"));
             } catch (NoSuchFieldException e) {
                 throw new NoSuchFieldError(e.getMessage());
             }
@@ -2157,7 +2157,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         @SuppressWarnings("unused")
         private volatile int parked;
 
-        PoolThreadNode(final Thread thread) {
+        PoolThreadNodeBase1(final Thread thread) {
             this.thread = thread;
             task = WAITING;
         }
@@ -2168,10 +2168,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         Runnable getTask() {
             return task;
-        }
-
-        PoolThreadNode getNext() {
-            return (PoolThreadNode) super.getNext();
         }
 
         void park(EnhancedQueueExecutor enhancedQueueExecutor) {
@@ -2245,6 +2241,26 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 return;
             }
             LockSupport.unpark(thread);
+        }
+    }
+
+    private static final class PoolThreadNode extends PoolThreadNodeBase1 {
+
+        /**
+         * Padding fields.
+         */
+        @SuppressWarnings("unused")
+        long p00, p01, p02, p03,
+                p04, p05, p06, p07,
+                p08, p09, p0A, p0B,
+                p0C, p0D, p0E, p0F;
+
+        PoolThreadNode(final Thread thread) {
+            super(thread);
+        }
+
+        PoolThreadNode getNext() {
+            return (PoolThreadNode) super.getNext();
         }
     }
 
