@@ -31,10 +31,10 @@ abstract class EnhancedQueueExecutorBase0 extends AbstractExecutorService {
      * Padding fields.
      */
     @SuppressWarnings("unused")
-    int p00, p01, p02, p03,
+    long p00, p01, p02, p03,
         p04, p05, p06, p07,
         p08, p09, p0A, p0B,
-        p0C, p0D, p0E, p0F;
+        p0C, p0D, p0E;
 
     EnhancedQueueExecutorBase0() {}
 
