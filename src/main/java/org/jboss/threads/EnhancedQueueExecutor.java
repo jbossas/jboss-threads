@@ -1704,19 +1704,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         if (TAIL_LOCK) lockTail();
         TaskNode tail = this.tail;
         TaskNode node = null;
+        int spins = 0;
         for (;;) {
             tailNext = tail.getNext();
             if (tailNext instanceof TaskNode) {
-                TaskNode tailNextTaskNode;
-                do {
-                    if (UPDATE_STATISTICS) spinMisses.increment();
-                    tailNextTaskNode = (TaskNode) tailNext;
-                    // retry
-                    tail = tailNextTaskNode;
-                    tailNext = tail.getNext();
-                } while (tailNext instanceof TaskNode);
-                // opportunistically update for the possible benefit of other threads
-                if (UPDATE_TAIL) compareAndSetTail(tail, tailNextTaskNode);
+                spins = onSpinMisses(spins);
+                tail = this.tail;
+                continue;
             }
             // we've progressed to the first non-task node, as far as we can see
             assert ! (tailNext instanceof TaskNode);
@@ -1755,7 +1749,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     }
                     // otherwise the consumer gave up or was exited already, so fall out and...
                 }
-                if (UPDATE_STATISTICS) spinMisses.increment();
+                spins = onSpinMisses(spins);
                 // retry with new tail(snapshot) as was foretold
                 tail = this.tail;
             } else if (tailNext == null) {
@@ -1808,7 +1802,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 }
                 // we failed; we have to drop the queue size back down again to compensate before we can retry
                 if (! NO_QUEUE_LIMIT) decreaseQueueSize();
-                if (UPDATE_STATISTICS) spinMisses.increment();
+                spins = onSpinMisses(spins);
                 // retry with new tail(snapshot)
                 tail = this.tail;
             } else {
@@ -1820,6 +1814,17 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             }
         }
         // not reached
+    }
+
+    // this method is sized to be smaller then default -XX:MaxInlineSize: beware making it bigger!
+    private int onSpinMisses(int spins) {
+        if (UPDATE_STATISTICS) spinMisses.increment();
+        if (spins == YIELD_SPINS) {
+            Thread.yield();
+            return 0;
+        } 
+        JDKSpecific.onSpinWait();
+        return spins + 1;
     }
 
     // =======================================================
