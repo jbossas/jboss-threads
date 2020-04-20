@@ -1896,8 +1896,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             return false;
         }
         int newSize = oldSize + 1;
+        int spins = 0;
         while (! compareAndSetQueueSize(oldVal, withCurrentQueueSize(oldVal, newSize))) {
-            if (UPDATE_STATISTICS) spinMisses.increment();
+            spins = onSpinMisses(spins);
             oldVal = queueSize;
             oldSize = currentQueueSizeOf(oldVal);
             if (oldSize >= maxQueueSizeOf(oldVal)) {
@@ -1920,8 +1921,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         long oldVal;
         oldVal = queueSize;
         assert currentQueueSizeOf(oldVal) > 0;
+        int spins = 0;
         while (! compareAndSetQueueSize(oldVal, withCurrentQueueSize(oldVal, currentQueueSizeOf(oldVal) - 1))) {
-            if (UPDATE_STATISTICS) spinMisses.increment();
+            spins = onSpinMisses(spins);
             oldVal = queueSize;
             assert currentQueueSizeOf(oldVal) > 0;
         }
