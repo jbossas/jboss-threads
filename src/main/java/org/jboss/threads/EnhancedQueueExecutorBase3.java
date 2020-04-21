@@ -21,7 +21,6 @@ package org.jboss.threads;
 import static org.jboss.threads.JBossExecutors.unsafe;
 
 import org.wildfly.common.annotation.NotNull;
-import org.wildfly.common.cpu.ProcessorInfo;
 
 /**
  * EQE base class: head section.
@@ -36,26 +35,6 @@ abstract class EnhancedQueueExecutorBase3 extends EnhancedQueueExecutorBase2 {
             throw new NoSuchFieldError(e.getMessage());
         }
     }
-
-    // =======================================================
-    // Locks
-    // =======================================================
-
-    /**
-     * Attempt to lock frequently-contended operations on the list head.
-     */
-    @SuppressWarnings("unused")
-    static final boolean HEAD_LOCK = readBooleanPropertyPrefixed("head-lock", false);
-    /**
-     * Use a spin lock for the head lock.
-     */
-    @SuppressWarnings("unused")
-    static final boolean HEAD_SPIN = readBooleanPropertyPrefixed("head-spin", true);
-
-    /**
-     * Number of spins before yielding.
-     */
-    static final int YIELD_SPINS = readIntPropertyPrefixed("lock-yield-spins", ProcessorInfo.availableProcessors() == 1 ? 0 : 128);
 
     // =======================================================
     // Current state fields
