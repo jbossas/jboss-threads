@@ -59,7 +59,6 @@
     <properties>
         <test.level>INFO</test.level>
 
-        <jboss.threads.eqe.update-tail>true</jboss.threads.eqe.update-tail>
         <jboss.threads.eqe.statistics>true</jboss.threads.eqe.statistics>
         <jboss.threads.eqe.unlimited-queue>false</jboss.threads.eqe.unlimited-queue>
         <jboss.threads.eqe.combined-lock>false</jboss.threads.eqe.combined-lock>
@@ -169,10 +168,6 @@
                         <property>
                             <name>java.util.logging.manager</name>
                             <value>org.jboss.logmanager.LogManager</value>
-                        </property>
-                        <property>
-                            <name>jboss.threads.eqe.update-tail</name>
-                            <value>${jboss.threads.eqe.update-tail}</value>
                         </property>
                         <property>
                             <name>jboss.threads.eqe.statistics</name>
