@@ -129,10 +129,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     public static final boolean DISABLE_HINT = readBooleanPropertyPrefixed("disable", false);
 
     /**
-     * Update the tail pointer opportunistically.
-     */
-    static final boolean UPDATE_TAIL = readBooleanPropertyPrefixed("update-tail", false);
-    /**
      * Update the summary statistics.
      */
     static final boolean UPDATE_STATISTICS = readBooleanPropertyPrefixed("statistics", false);
@@ -1701,22 +1697,22 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     private int tryExecute(final Runnable runnable) {
         QNode tailNext;
-        if (TAIL_LOCK) lockTail();
         TaskNode tail = this.tail;
         TaskNode node = null;
         for (;;) {
             tailNext = tail.getNext();
             if (tailNext instanceof TaskNode) {
-                TaskNode tailNextTaskNode;
-                do {
+                TaskNode tailNextTaskNode = (TaskNode) tailNext;
+                // Opportunistically update tail to the next node. If this operation has been handled by
+                // another thread we fall back to the loop and try again instead of duplicating effort.
+                if (!compareAndSetTail(tail, tailNextTaskNode)) {
                     if (UPDATE_STATISTICS) spinMisses.increment();
-                    tailNextTaskNode = (TaskNode) tailNext;
-                    // retry
-                    tail = tailNextTaskNode;
-                    tailNext = tail.getNext();
-                } while (tailNext instanceof TaskNode);
-                // opportunistically update for the possible benefit of other threads
-                if (UPDATE_TAIL) compareAndSetTail(tail, tailNextTaskNode);
+                    JDKSpecific.onSpinWait();
+                    tail = this.tail;
+                    continue;
+                }
+                tail = tailNextTaskNode;
+                continue;
             }
             // we've progressed to the first non-task node, as far as we can see
             assert ! (tailNext instanceof TaskNode);
@@ -1749,7 +1745,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // post-actions (fail):
                     //   retry outer with new tail(snapshot)
                     if (consumerNode.compareAndSetTask(WAITING, runnable)) {
-                        if (TAIL_LOCK) unlockTail();
                         consumerNode.unpark();
                         return EXE_OK;
                     }
@@ -1762,11 +1757,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 // no consumers available; maybe we can start one
                 int tr = tryAllocateThread(growthResistance);
                 if (tr == AT_YES) {
-                    if (TAIL_LOCK) unlockTail();
                     return EXE_CREATE_THREAD;
                 }
                 if (tr == AT_SHUTDOWN) {
-                    if (TAIL_LOCK) unlockTail();
                     return EXE_REJECT_SHUTDOWN;
                 }
                 assert tr == AT_NO;
@@ -1775,7 +1768,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // queue is full
                     // OK last effort to create a thread, disregarding growth limit
                     tr = tryAllocateThread(0.0f);
-                    if (TAIL_LOCK) unlockTail();
                     if (tr == AT_YES) {
                         return EXE_CREATE_THREAD;
                     }
@@ -1803,7 +1795,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // try to update tail to the new node; if this CAS fails then tail already points at past the node
                     // this is because tail can only ever move forward, and the task list is always strongly connected
                     compareAndSetTail(tail, node);
-                    if (TAIL_LOCK) unlockTail();
                     return EXE_OK;
                 }
                 // we failed; we have to drop the queue size back down again to compensate before we can retry
@@ -1812,7 +1803,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 // retry with new tail(snapshot)
                 tail = this.tail;
             } else {
-                if (TAIL_LOCK) unlockTail();
                 // no consumers are waiting and the tail(snapshot).next node is non-null and not a task node, therefore it must be a...
                 assert tailNext instanceof TerminateWaiterNode;
                 // shutting down
