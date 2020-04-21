@@ -131,7 +131,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     /**
      * Update the tail pointer opportunistically.
      */
-    static final boolean UPDATE_TAIL = readBooleanPropertyPrefixed("update-tail", false);
+    static final boolean UPDATE_TAIL = readBooleanPropertyPrefixed("update-tail", true);
     /**
      * Update the summary statistics.
      */
@@ -1707,16 +1707,17 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         for (;;) {
             tailNext = tail.getNext();
             if (tailNext instanceof TaskNode) {
-                TaskNode tailNextTaskNode;
-                do {
+                TaskNode tailNextTaskNode = (TaskNode) tailNext;
+                // Opportunistically update tail to the next node. If this operation has been handled by
+                // another thread we fall back to the loop and try again instead of duplicating effort.
+                if (UPDATE_TAIL && !compareAndSetTail(tail, tailNextTaskNode)) {
                     if (UPDATE_STATISTICS) spinMisses.increment();
-                    tailNextTaskNode = (TaskNode) tailNext;
-                    // retry
-                    tail = tailNextTaskNode;
-                    tailNext = tail.getNext();
-                } while (tailNext instanceof TaskNode);
-                // opportunistically update for the possible benefit of other threads
-                if (UPDATE_TAIL) compareAndSetTail(tail, tailNextTaskNode);
+                    JDKSpecific.onSpinWait();
+                    tail = this.tail;
+                    continue;
+                }
+                tail = tailNextTaskNode;
+                continue;
             }
             // we've progressed to the first non-task node, as far as we can see
             assert ! (tailNext instanceof TaskNode);
