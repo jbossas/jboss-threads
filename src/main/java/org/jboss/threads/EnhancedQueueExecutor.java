@@ -2250,11 +2250,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         Runnable getAndClearTask() {
-            try {
-                return task;
-            } finally {
-                this.task = null;
-            }
+            Runnable result = task;
+            task = null;
+            return result;
         }
     }
 
