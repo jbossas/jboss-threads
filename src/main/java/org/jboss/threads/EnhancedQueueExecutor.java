@@ -2283,7 +2283,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     }
 
     static final class TaskNode extends QNode {
-        volatile Runnable task;
+        Runnable task;
 
         TaskNode(final Runnable task) {
             // we always start task nodes with a {@code null} next
