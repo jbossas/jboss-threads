@@ -794,9 +794,16 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         QNode headNext;
         for (;;) {
             headNext = head.getNext();
+            if (headNext == head) {
+                // a racing consumer has already consumed it (and moved head)
+                head = this.head;
+                continue;
+            }
             if (headNext instanceof TaskNode) {
                 TaskNode taskNode = (TaskNode) headNext;
                 if (compareAndSetHead(head, taskNode)) {
+                    // save from GC nepotism
+                    head.setNextOrdered(head);
                     if (! NO_QUEUE_LIMIT) decreaseQueueSize();
                     head = taskNode;
                     list.add(taskNode.task);
@@ -1515,9 +1522,21 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             for (;;) {
                 head = EnhancedQueueExecutor.this.head;
                 headNext = head.getNext();
+                // this happen if another consumer has already consumed head:
+                // retry with a fresh head
+                if (headNext == head) {
+                    if (UPDATE_STATISTICS) spinMisses.increment();
+                    JDKSpecific.onSpinWait();
+                    continue;
+                }
                 if (headNext instanceof TaskNode) {
                     TaskNode taskNode = (TaskNode) headNext;
                     if (compareAndSetHead(head, taskNode)) {
+                        // save from GC Nepotism: generational GCs don't like
+                        // cross-generational references, so better to "clean-up" head::next
+                        // to save dragging head::next into the old generation.
+                        // Clean-up cannot just null out next
+                        head.setNextOrdered(head);
                         if (! NO_QUEUE_LIMIT) decreaseQueueSize();
                         return taskNode;
                     }
@@ -1525,6 +1544,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     nextPoolThreadNode.setNextRelaxed(headNext);
                     if (head.compareAndSetNext(headNext, nextPoolThreadNode)) {
                         return nextPoolThreadNode;
+                    } else if (headNext != null) {
+                        // GC Nepotism:
+                        // save dragging headNext into old generation
+                        // (although being a PoolThreadNode it won't make a big difference)
+                        nextPoolThreadNode.setNextRelaxed(null);
                     }
                 } else {
                     assert headNext instanceof TerminateWaiterNode;
@@ -1701,6 +1725,15 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         TaskNode node = null;
         for (;;) {
             tailNext = tail.getNext();
+            // tail is already consumed
+            if (tailNext == tail) {
+                if (UPDATE_STATISTICS) spinMisses.increment();
+                JDKSpecific.onSpinWait();
+                // retry with new tail(snapshot)
+                tail = this.tail;
+                continue;
+            }
+            assert tailNext != tail;
             if (tailNext instanceof TaskNode) {
                 TaskNode tailNextTaskNode = (TaskNode) tailNext;
                 // Opportunistically update tail to the next node. If this operation has been handled by
@@ -1745,6 +1778,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // post-actions (fail):
                     //   retry outer with new tail(snapshot)
                     if (consumerNode.compareAndSetTask(WAITING, runnable)) {
+                        // GC Nepotism:
+                        // We can save consumerNode::next from being dragged into
+                        // old generation, if possible
+                        consumerNode.compareAndSetNext(tailNextNext, null);
                         consumerNode.unpark();
                         return EXE_OK;
                     }
@@ -2088,6 +2125,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         void setNextRelaxed(final QNode node) {
             unsafe.putObject(this, nextOffset, node);
+        }
+
+        void setNextOrdered(final QNode node) {
+            unsafe.putOrderedObject(this, nextOffset, node);
         }
     }
 
