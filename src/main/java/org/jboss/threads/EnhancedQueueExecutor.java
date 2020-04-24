@@ -1522,40 +1522,36 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             for (;;) {
                 head = EnhancedQueueExecutor.this.head;
                 headNext = head.getNext();
-                // this happen if another consumer has already consumed head:
+                // headNext == head can happen if another consumer has already consumed head:
                 // retry with a fresh head
-                if (headNext == head) {
-                    if (UPDATE_STATISTICS) spinMisses.increment();
-                    JDKSpecific.onSpinWait();
-                    continue;
-                }
-                if (headNext instanceof TaskNode) {
-                    TaskNode taskNode = (TaskNode) headNext;
-                    if (compareAndSetHead(head, taskNode)) {
-                        // save from GC Nepotism: generational GCs don't like
-                        // cross-generational references, so better to "clean-up" head::next
-                        // to save dragging head::next into the old generation.
-                        // Clean-up cannot just null out next
-                        head.setNextOrdered(head);
-                        if (! NO_QUEUE_LIMIT) decreaseQueueSize();
-                        return taskNode;
+                if (headNext != head) {
+                    if (headNext instanceof TaskNode) {
+                        TaskNode taskNode = (TaskNode) headNext;
+                        if (compareAndSetHead(head, taskNode)) {
+                            // save from GC Nepotism: generational GCs don't like
+                            // cross-generational references, so better to "clean-up" head::next
+                            // to save dragging head::next into the old generation.
+                            // Clean-up cannot just null out next
+                            head.setNextOrdered(head);
+                            if (!NO_QUEUE_LIMIT) decreaseQueueSize();
+                            return taskNode;
+                        }
+                    } else if (headNext instanceof PoolThreadNode || headNext == null) {
+                        nextPoolThreadNode.setNextRelaxed(headNext);
+                        if (head.compareAndSetNext(headNext, nextPoolThreadNode)) {
+                            return nextPoolThreadNode;
+                        } else if (headNext != null) {
+                            // GC Nepotism:
+                            // save dragging headNext into old generation
+                            // (although being a PoolThreadNode it won't make a big difference)
+                            nextPoolThreadNode.setNextRelaxed(null);
+                        }
+                    } else {
+                        assert headNext instanceof TerminateWaiterNode;
+                        return headNext;
                     }
-                } else if (headNext instanceof PoolThreadNode || headNext == null) {
-                    nextPoolThreadNode.setNextRelaxed(headNext);
-                    if (head.compareAndSetNext(headNext, nextPoolThreadNode)) {
-                        return nextPoolThreadNode;
-                    } else if (headNext != null) {
-                        // GC Nepotism:
-                        // save dragging headNext into old generation
-                        // (although being a PoolThreadNode it won't make a big difference)
-                        nextPoolThreadNode.setNextRelaxed(null);
-                    }
-                } else {
-                    assert headNext instanceof TerminateWaiterNode;
-                    return headNext;
                 }
                 if (UPDATE_STATISTICS) spinMisses.increment();
-                JDKSpecific.onSpinWait();
             }
         }
 
