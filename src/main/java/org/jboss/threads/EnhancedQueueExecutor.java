@@ -1484,6 +1484,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 }
                 if (UPDATE_STATISTICS) incrementActiveCount();
                 safeRun(task);
+                Thread.interrupted();
                 if (UPDATE_STATISTICS) {
                     decrementActiveCount();
                     completedTaskCounter.increment();
@@ -1754,28 +1755,35 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     void completeTermination() {
         assert ! holdsLock(headLock) && ! holdsLock(tailLock);
         // be kind and un-interrupt the thread for the termination task
-        Thread.interrupted();
-        final Runnable terminationTask = this.terminationTask;
-        this.terminationTask = null;
-        safeRun(terminationTask);
-        // notify all waiters
-        Waiter waiters = getAndSetTerminationWaiters(TERMINATE_COMPLETE_WAITER);
-        while (waiters != null) {
-            unpark(waiters.getThread());
-            waiters = waiters.getNext();
-        }
-        tail.getAndSetNext(TERMINATE_COMPLETE);
-        final ObjectInstance handle = this.handle;
-        if (handle != null) {
-            doPrivileged(new PrivilegedAction<Void>() {
-                public Void run() {
-                    try {
-                        ManagementFactory.getPlatformMBeanServer().unregisterMBean(handle.getObjectName());
-                    } catch (Throwable ignored) {
+        boolean intr = Thread.interrupted();
+        try {
+            final Runnable terminationTask = JBossExecutors.classLoaderPreservingTask(this.terminationTask);
+            this.terminationTask = null;
+            safeRun(terminationTask);
+            // notify all waiters
+            Waiter waiters = getAndSetTerminationWaiters(TERMINATE_COMPLETE_WAITER);
+            while (waiters != null) {
+                unpark(waiters.getThread());
+                waiters = waiters.getNext();
+            }
+            tail.getAndSetNext(TERMINATE_COMPLETE);
+            final ObjectInstance handle = this.handle;
+            if (handle != null) {
+                intr = intr || Thread.interrupted();
+                doPrivileged(new PrivilegedAction<Void>() {
+                    public Void run() {
+                        try {
+                            ManagementFactory.getPlatformMBeanServer().unregisterMBean(handle.getObjectName());
+                        } catch (Throwable ignored) {
+                        }
+                        return null;
                     }
-                    return null;
-                }
-            }, acc);
+                }, acc);
+            }
+        } finally {
+            if (intr) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
@@ -1986,11 +1994,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             } catch (Throwable ignored) {
                 // nothing else we can safely do here
             }
-        } finally {
-            // clear TCCL
-            JBossExecutors.clearContextClassLoader(Thread.currentThread());
-            // clear interrupt status
-            Thread.interrupted();
         }
     }
 
