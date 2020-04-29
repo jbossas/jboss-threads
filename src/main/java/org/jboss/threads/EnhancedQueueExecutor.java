@@ -1572,6 +1572,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 }
                 if (UPDATE_ACTIVE_COUNT) incrementActiveCount();
                 safeRun(task);
+                Thread.interrupted();
                 if (UPDATE_ACTIVE_COUNT) {
                     decrementActiveCount();
                     if (UPDATE_STATISTICS) {
@@ -1851,21 +1852,28 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     void completeTermination() {
         // be kind and un-interrupt the thread for the termination task
-        Thread.interrupted();
-        final Runnable terminationTask = this.terminationTask;
-        this.terminationTask = null;
-        safeRun(terminationTask);
-        // notify all waiters
-        Waiter waiters = getAndSetTerminationWaiters(TERMINATE_COMPLETE_WAITER);
-        while (waiters != null) {
-            unpark(waiters.getThread());
-            waiters = waiters.getNext();
-        }
-        tail.setNext(TERMINATE_COMPLETE);
-        if (! DISABLE_MBEAN) {
-            final Object handle = this.handle;
-            if (handle != null) {
-                doPrivileged(new MBeanUnregisterAction(handle), acc);
+        boolean intr = Thread.interrupted();
+        try {
+            final Runnable terminationTask = JBossExecutors.classLoaderPreservingTask(this.terminationTask);
+            this.terminationTask = null;
+            safeRun(terminationTask);
+            // notify all waiters
+            Waiter waiters = getAndSetTerminationWaiters(TERMINATE_COMPLETE_WAITER);
+            while (waiters != null) {
+                unpark(waiters.getThread());
+                waiters = waiters.getNext();
+            }
+            tail.setNext(TERMINATE_COMPLETE);
+            if (! DISABLE_MBEAN) {
+                final Object handle = this.handle;
+                if (handle != null) {
+                    intr = intr || Thread.interrupted();
+                    doPrivileged(new MBeanUnregisterAction(handle), acc);
+                }
+            }
+        } finally {
+            if (intr) {
+                Thread.currentThread().interrupt();
             }
         }
     }
@@ -2036,8 +2044,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     void safeRun(final Runnable task) {
         if (task == null) return;
-        final Thread currentThread = Thread.currentThread();
-        JBossExecutors.clearContextClassLoader(currentThread);
         try {
             task.run();
         } catch (Throwable t) {
@@ -2046,10 +2052,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             } catch (Throwable ignored) {
                 // nothing else we can safely do here
             }
-        } finally {
-            JBossExecutors.clearContextClassLoader(currentThread);
-            // clear interrupt status
-            Thread.interrupted();
         }
     }
 
