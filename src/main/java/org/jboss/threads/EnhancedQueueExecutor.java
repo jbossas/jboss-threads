@@ -1722,31 +1722,55 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         TaskNode node = null;
         for (;;) {
             tailNext = tail.getNext();
-            // tail is already consumed
             if (tailNext == tail) {
-                if (UPDATE_STATISTICS) spinMisses.increment();
-                JDKSpecific.onSpinWait();
-                // retry with new tail(snapshot)
-                tail = this.tail;
-                continue;
-            }
-            assert tailNext != tail;
-            if (tailNext instanceof TaskNode) {
-                TaskNode tailNextTaskNode = (TaskNode) tailNext;
-                // Opportunistically update tail to the next node. If this operation has been handled by
-                // another thread we fall back to the loop and try again instead of duplicating effort.
-                if (!compareAndSetTail(tail, tailNextTaskNode)) {
-                    if (UPDATE_STATISTICS) spinMisses.increment();
-                    JDKSpecific.onSpinWait();
-                    tail = this.tail;
-                    continue;
+                // tail is already consumed, retry with new tail(snapshot)
+            } else if (tailNext == null) {
+                // no consumers available; maybe we can start one
+                int tr = tryAllocateThread(growthResistance);
+                if (tr == AT_YES) {
+                    return EXE_CREATE_THREAD;
                 }
-                tail = tailNextTaskNode;
-                continue;
-            }
-            // we've progressed to the first non-task node, as far as we can see
-            assert ! (tailNext instanceof TaskNode);
-            if (tailNext instanceof PoolThreadNode) {
+                if (tr == AT_SHUTDOWN) {
+                    return EXE_REJECT_SHUTDOWN;
+                }
+                assert tr == AT_NO;
+                // no; try to enqueue
+                if (!NO_QUEUE_LIMIT && !increaseQueueSize()) {
+                    // queue is full
+                    // OK last effort to create a thread, disregarding growth limit
+                    tr = tryAllocateThread(0.0f);
+                    if (tr == AT_YES) {
+                        return EXE_CREATE_THREAD;
+                    }
+                    if (tr == AT_SHUTDOWN) {
+                        return EXE_REJECT_SHUTDOWN;
+                    }
+                    assert tr == AT_NO;
+                    return EXE_REJECT_QUEUE_FULL;
+                }
+                // queue size increased successfully; we can add to the list
+                if (node == null) {
+                    // avoid re-allocating TaskNode instances on subsequent iterations
+                    node = new TaskNode(runnable);
+                }
+                // state change ex5:
+                //   tail(snapshot).next ← new task node
+                // cannot succeed: sh2
+                // preconditions:
+                //   tail(snapshot).next = null
+                //   ex3 failed precondition
+                //   queue size increased to accommodate node
+                // postconditions (success):
+                //   tail(snapshot).next = new task node
+                if (tail.compareAndSetNext(null, node)) {
+                    // try to update tail to the new node; if this CAS fails then tail already points at past the node
+                    // this is because tail can only ever move forward, and the task list is always strongly connected
+                    compareAndSetTail(tail, node);
+                    return EXE_OK;
+                }
+                // we failed; we have to drop the queue size back down again to compensate before we can retry
+                if (!NO_QUEUE_LIMIT) decreaseQueueSize();
+            } else if (tailNext instanceof PoolThreadNode) {
                 final QNode tailNextNext = tailNext.getNext();
                 // state change ex1:
                 //   tail(snapshot).next ← tail(snapshot).next(snapshot).next(snapshot)
@@ -1784,64 +1808,24 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     }
                     // otherwise the consumer gave up or was exited already, so fall out and...
                 }
-                if (UPDATE_STATISTICS) spinMisses.increment();
-                // retry with new tail(snapshot) as was foretold
-                tail = this.tail;
-            } else if (tailNext == null) {
-                // no consumers available; maybe we can start one
-                int tr = tryAllocateThread(growthResistance);
-                if (tr == AT_YES) {
-                    return EXE_CREATE_THREAD;
+            } else if (tailNext instanceof TaskNode) {
+                TaskNode tailNextTaskNode = (TaskNode) tailNext;
+                // Opportunistically update tail to the next node. If this operation has been handled by
+                // another thread we fall back to the loop and try again instead of duplicating effort.
+                if (compareAndSetTail(tail, tailNextTaskNode)) {
+                    tail = tailNextTaskNode;
+                    // bypass the on-spin-miss path because we've updated the next task node to tailNextTaskNode.
+                    continue;
                 }
-                if (tr == AT_SHUTDOWN) {
-                    return EXE_REJECT_SHUTDOWN;
-                }
-                assert tr == AT_NO;
-                // no; try to enqueue
-                if (! NO_QUEUE_LIMIT && ! increaseQueueSize()) {
-                    // queue is full
-                    // OK last effort to create a thread, disregarding growth limit
-                    tr = tryAllocateThread(0.0f);
-                    if (tr == AT_YES) {
-                        return EXE_CREATE_THREAD;
-                    }
-                    if (tr == AT_SHUTDOWN) {
-                        return EXE_REJECT_SHUTDOWN;
-                    }
-                    assert tr == AT_NO;
-                    return EXE_REJECT_QUEUE_FULL;
-                }
-                // queue size increased successfully; we can add to the list
-                if (node == null) {
-                    // avoid re-allocating TaskNode instances on subsequent iterations
-                    node = new TaskNode(runnable);
-                }
-                // state change ex5:
-                //   tail(snapshot).next ← new task node
-                // cannot succeed: sh2
-                // preconditions:
-                //   tail(snapshot).next = null
-                //   ex3 failed precondition
-                //   queue size increased to accommodate node
-                // postconditions (success):
-                //   tail(snapshot).next = new task node
-                if (tail.compareAndSetNext(null, node)) {
-                    // try to update tail to the new node; if this CAS fails then tail already points at past the node
-                    // this is because tail can only ever move forward, and the task list is always strongly connected
-                    compareAndSetTail(tail, node);
-                    return EXE_OK;
-                }
-                // we failed; we have to drop the queue size back down again to compensate before we can retry
-                if (! NO_QUEUE_LIMIT) decreaseQueueSize();
-                if (UPDATE_STATISTICS) spinMisses.increment();
-                // retry with new tail(snapshot)
-                tail = this.tail;
             } else {
                 // no consumers are waiting and the tail(snapshot).next node is non-null and not a task node, therefore it must be a...
                 assert tailNext instanceof TerminateWaiterNode;
                 // shutting down
                 return EXE_REJECT_SHUTDOWN;
             }
+            // retry with new tail(snapshot)
+            if (UPDATE_STATISTICS) spinMisses.increment();
+            tail = this.tail;
         }
         // not reached
     }
