@@ -158,6 +158,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      */
     static final int YIELD_FACTOR = max(min(readIntPropertyPrefixed("park-yields", 1), PARK_SPINS), 0);
 
+    /**
+     * To be used when the total number of threads <= cores available.
+     */
+    static final boolean UNDER_SUBSCRIBED = readBooleanPropertyPrefixed("under-subscribed", false);
+
     // =======================================================
     // Constants
     // =======================================================
@@ -1732,6 +1737,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             }
             assert tailNext != tail;
             if (tailNext instanceof TaskNode) {
+                // we trust the producer moving tail won't be descheduled
+                // hence there is no need to help it
+                if (UNDER_SUBSCRIBED) {
+                    tail = this.tail;
+                    continue;
+                }
+                assert !UNDER_SUBSCRIBED;
                 TaskNode tailNextTaskNode = (TaskNode) tailNext;
                 // Opportunistically update tail to the next node. If this operation has been handled by
                 // another thread we fall back to the loop and try again instead of duplicating effort.
@@ -1826,9 +1838,16 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 // postconditions (success):
                 //   tail(snapshot).next = new task node
                 if (tail.compareAndSetNext(null, node)) {
-                    // try to update tail to the new node; if this CAS fails then tail already points at past the node
-                    // this is because tail can only ever move forward, and the task list is always strongly connected
-                    compareAndSetTail(tail, node);
+                    if (!UNDER_SUBSCRIBED) {
+                        // try to update tail to the new node; if this CAS fails then tail already points at past the node
+                        // this is because tail can only ever move forward, and the task list is always strongly connected
+                        compareAndSetTail(tail, node);
+                    } else {
+                        // given that no other producers could opportunistically help moving tail
+                        // we can trust we're the only one able to do it and we can save
+                        // expensive HW barriers while doing it
+                        setTailOrdered(node);
+                    }
                     return EXE_OK;
                 }
                 // we failed; we have to drop the queue size back down again to compensate before we can retry

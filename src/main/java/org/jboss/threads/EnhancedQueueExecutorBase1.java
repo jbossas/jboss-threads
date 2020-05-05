@@ -55,4 +55,8 @@ abstract class EnhancedQueueExecutorBase1 extends EnhancedQueueExecutorBase0 {
     boolean compareAndSetTail(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
         return tail == expect && unsafe.compareAndSwapObject(this, tailOffset, expect, update);
     }
+
+    void setTailOrdered(final EnhancedQueueExecutor.TaskNode value) {
+        unsafe.putOrderedObject(this, tailOffset, value);
+    }
 }
