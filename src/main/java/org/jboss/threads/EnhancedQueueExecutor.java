@@ -1724,8 +1724,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             tailNext = tail.getNext();
             // tail is already consumed
             if (tailNext == tail) {
-                if (UPDATE_STATISTICS) spinMisses.increment();
-                JDKSpecific.onSpinWait();
                 // retry with new tail(snapshot)
                 tail = this.tail;
                 continue;
@@ -1736,8 +1734,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 // Opportunistically update tail to the next node. If this operation has been handled by
                 // another thread we fall back to the loop and try again instead of duplicating effort.
                 if (!compareAndSetTail(tail, tailNextTaskNode)) {
-                    if (UPDATE_STATISTICS) spinMisses.increment();
-                    JDKSpecific.onSpinWait();
                     tail = this.tail;
                     continue;
                 }
