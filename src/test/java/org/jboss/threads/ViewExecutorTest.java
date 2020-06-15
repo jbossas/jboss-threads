@@ -81,6 +81,7 @@ public final class ViewExecutorTest {
         assertEquals(0, executedTasks.size());
     }
 
+    @Test
     public void testInterruptedShutdown() throws InterruptedException {
         ExecutorService testExecutor = Executors.newSingleThreadExecutor();
         final ViewExecutor ve = ViewExecutor.builder(testExecutor).build();
