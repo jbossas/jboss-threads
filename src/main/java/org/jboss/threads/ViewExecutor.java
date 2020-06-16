@@ -306,6 +306,7 @@ public final class ViewExecutor extends AbstractExecutorService {
         }
 
         public void run() {
+            boolean removeFromAllWrappersAfterCompletion = true;
             thread = Thread.currentThread();
             try {
                 for (;;) {
@@ -352,6 +353,7 @@ public final class ViewExecutor extends AbstractExecutorService {
                     }
                     try {
                         delegate.execute(this);
+                        removeFromAllWrappersAfterCompletion = false;
                         // resubmitted this task for execution, so return
                         return;
                     } catch (Throwable t) {
@@ -361,6 +363,9 @@ public final class ViewExecutor extends AbstractExecutorService {
                     }
                 }
             } finally {
+                if (removeFromAllWrappersAfterCompletion) {
+                    allWrappers.remove(this);
+                }
                 thread = null;
             }
         }

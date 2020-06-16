@@ -108,6 +108,31 @@ public final class ViewExecutorTest {
         assertTrue(testExecutor.awaitTermination(5L, TimeUnit.SECONDS));
     }
 
+    // TaskWrapper instances are relatively small and take a long time to knock over a JVM,
+    // however when they aren't collected properly they will cause a GC spiral for much longer
+    // than ten seconds. Unfortunately this test is impacted by hardware changes and may flake
+    // (or erroneously pass on fast enough hardware).
+    @Test(timeout = 10_000)
+    public void testViewExecutorMemoryOverhead() {
+        Executor directExecutor = new Executor() {
+            @Override
+            public void execute(Runnable command) {
+                try {
+                    command.run();
+                } catch (Throwable t) {
+                    Thread currentThread = Thread.currentThread();
+                    currentThread.getUncaughtExceptionHandler().uncaughtException(currentThread, t);
+                }
+            }
+        };
+        ExecutorService executorService = ViewExecutor.builder(directExecutor).build();
+        for (long i = 0; i < 20_000_000L; i++) {
+            executorService.execute(JBossExecutors.nullRunnable());
+        }
+        executorService.shutdown();
+        assertTrue(executorService.isTerminated());
+    }
+
     private static class QueuedExecutor implements Executor {
         private final ArrayDeque<Runnable> executedTasks;
 
