@@ -18,6 +18,7 @@
 
 package org.jboss.threads;
 
+import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
@@ -27,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
 
 import org.wildfly.common.Assert;
+import org.wildfly.common.cpu.ProcessorInfo;
 import org.wildfly.common.function.ExceptionBiConsumer;
 import org.wildfly.common.function.ExceptionBiFunction;
 import org.wildfly.common.function.ExceptionConsumer;
@@ -43,6 +45,11 @@ import org.wildfly.common.function.Functions;
 public class JBossThread extends Thread {
 
     private static final RuntimePermission MODIFY_THREAD_PERMISSION = new RuntimePermission("modifyThread");
+    private static final int MAX_INTERRUPT_SPINS = AccessController.doPrivileged(new PrivilegedAction<Integer>() {
+        public Integer run() {
+            return Integer.valueOf(Integer.parseInt(System.getProperty("jboss.threads.interrupt.spins", ProcessorInfo.availableProcessors() == 0 ? "0" : "128")));
+        }
+    }).intValue();
 
     static {
         Version.getVersionString();
@@ -153,18 +160,33 @@ public class JBossThread extends Thread {
         if (isInterrupted()) return;
         final AtomicInteger stateRef = this.stateRef;
         int oldVal, newVal;
-        do {
+        int spins = 0;
+        for (;;) {
             oldVal = stateRef.get();
-            if (oldVal == STATE_INTERRUPT_PENDING || oldVal == STATE_INTERRUPT_IN_PROGRESS) {
+            if (oldVal == STATE_INTERRUPT_PENDING) {
                 // already set
                 Messages.msg.tracef("Interrupting thread \"%s\" (already interrupted)", this);
                 return;
-            } else if (oldVal == STATE_INTERRUPT_DEFERRED) {
-                newVal = STATE_INTERRUPT_PENDING;
+            } else if (oldVal == STATE_INTERRUPT_IN_PROGRESS) {
+                // wait for interruption on other thread to be completed
+                if (spins < MAX_INTERRUPT_SPINS) {
+                    //JDKSpecific.onSpinWait();
+                    spins++;
+                } else {
+                    Thread.yield();
+                }
+                continue;
             } else {
-                newVal = STATE_INTERRUPT_IN_PROGRESS;
+                if (oldVal == STATE_INTERRUPT_DEFERRED) {
+                    newVal = STATE_INTERRUPT_PENDING;
+                } else {
+                    newVal = STATE_INTERRUPT_IN_PROGRESS;
+                }
             }
-        } while (! stateRef.compareAndSet(oldVal, newVal));
+            if (stateRef.compareAndSet(oldVal, newVal)) {
+                break;
+            }
+        }
         if (newVal == STATE_INTERRUPT_IN_PROGRESS) try {
             doInterrupt();
         } finally {
