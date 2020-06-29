@@ -1347,6 +1347,9 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             // run the initial task
             doRunTask(getAndClearInitialTask());
 
+            // clear TCCL
+            JBossExecutors.clearContextClassLoader(currentThread);
+
             // main loop
             QNode node;
             processingQueue: for (;;) {
@@ -1975,11 +1978,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     void safeRun(final Runnable task) {
         assert ! holdsLock(headLock) && ! holdsLock(tailLock);
-        if (task == null) return;
-        final Thread currentThread = Thread.currentThread();
-        JBossExecutors.clearContextClassLoader(currentThread);
         try {
-            task.run();
+            if (task != null) task.run();
         } catch (Throwable t) {
             try {
                 exceptionHandler.uncaughtException(Thread.currentThread(), t);
@@ -1987,7 +1987,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 // nothing else we can safely do here
             }
         } finally {
-            JBossExecutors.clearContextClassLoader(currentThread);
+            // clear TCCL
+            JBossExecutors.clearContextClassLoader(Thread.currentThread());
             // clear interrupt status
             Thread.interrupted();
         }
