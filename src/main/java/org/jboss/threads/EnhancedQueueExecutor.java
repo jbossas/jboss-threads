@@ -755,7 +755,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         final int result;
         try (TryExecuteTask tryExecuteTask = POOLED_COMBINER_TASKS.get().on(this, realRunnable)) {
             tryExecuteCombiner.combine(tryExecuteTask, idleCount -> {
-                JDKSpecific.onSpinWait();
+                final int spinWait = PARK_SPINS - YIELD_FACTOR;
+                if (idleCount >= spinWait) {
+                    Thread.yield();
+                } else {
+                    JDKSpecific.onSpinWait();
+                    idleCount++;
+                }
                 return idleCount;
             });
             result = tryExecuteTask.result;
