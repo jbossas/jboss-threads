@@ -50,6 +50,7 @@ import java.util.concurrent.locks.LockSupport;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 
+import org.jboss.threads.combiner.OptimizedCombiner;
 import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 import org.wildfly.common.Assert;
@@ -188,6 +189,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * The access control context of the creating thread.
      */
     private final AccessControlContext acc;
+
+    private final OptimizedCombiner tryExecuteCombiner;
 
     // =======================================================
     // Current state fields
@@ -340,6 +343,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     static volatile int sequence = 1;
+    private static final ThreadLocal<TryExecuteTask> POOLED_COMBINER_TASKS = ThreadLocal.withInitial(TryExecuteTask::new);
 
     EnhancedQueueExecutor(final Builder builder) {
         super();
@@ -365,6 +369,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         } else {
             handle = null;
         }
+        tryExecuteCombiner = new OptimizedCombiner();
     }
 
     static final class MBeanRegisterAction implements PrivilegedAction<ObjectInstance> {
@@ -747,8 +752,14 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     public void execute(Runnable runnable) {
         Assert.checkNotNullParam("runnable", runnable);
         final Runnable realRunnable = JBossExecutors.classLoaderPreservingTaskUnchecked(runnable);
-        int result;
-        result = tryExecute(realRunnable);
+        final int result;
+        try (TryExecuteTask tryExecuteTask = POOLED_COMBINER_TASKS.get().on(this, realRunnable)) {
+            tryExecuteCombiner.combine(tryExecuteTask, idleCount -> {
+                JDKSpecific.onSpinWait();
+                return idleCount;
+            });
+            result = tryExecuteTask.result;
+        }
         boolean ok = false;
         if (result == EXE_OK) {
             // last check to ensure that there is at least one existent thread to avoid rare thread timeout race condition
@@ -1710,6 +1721,29 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             return false;
         }
         return true;
+    }
+
+    private static final class TryExecuteTask implements Runnable, AutoCloseable {
+        int result;
+        Runnable task;
+        EnhancedQueueExecutor executor;
+
+        TryExecuteTask on(EnhancedQueueExecutor executor, Runnable task) {
+            this.task = task;
+            this.executor = executor;
+            return this;
+        }
+
+        @Override
+        public void run() {
+            result = executor.tryExecute(task);
+        }
+
+        @Override
+        public void close() {
+            task = null;
+            executor = null;
+        }
     }
 
     // =======================================================
