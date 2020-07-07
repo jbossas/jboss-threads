@@ -110,8 +110,11 @@ final class QueuedViewExecutor extends ViewExecutor {
                 return;
             }
         }
-        // didn't exit
-        this.state = interrupt ? ST_SHUTDOWN_INT_REQ : ST_SHUTDOWN_REQ;
+        // didn't exit, or already completed
+        int newState = interrupt ? ST_SHUTDOWN_INT_REQ : ST_SHUTDOWN_REQ;
+        if (newState > oldState) {
+            this.state = newState;
+        }
         lock.unlock();
         if (interrupt && oldState < ST_SHUTDOWN_INT_REQ) {
             // interrupt all runners

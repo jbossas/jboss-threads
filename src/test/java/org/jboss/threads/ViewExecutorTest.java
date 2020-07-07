@@ -52,6 +52,8 @@ public final class ViewExecutorTest {
         assertTrue(ve.isShutdown());
         assertTrue(ve.awaitTermination(10L, TimeUnit.SECONDS));
         assertTrue(ve.isTerminated());
+        ve.shutdown();
+        assertTrue(ve.isTerminated());
     }
 
     @Test
