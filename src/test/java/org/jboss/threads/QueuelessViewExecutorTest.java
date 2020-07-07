@@ -20,8 +20,12 @@ package org.jboss.threads;
 
 import org.awaitility.Awaitility;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -32,15 +36,54 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@RunWith(Parameterized.class)
 public class QueuelessViewExecutorTest {
 
     private static final String THREAD_BASE_NAME = "CachedExecutorViewTest-";
+
+    /*
+     * Both implementations have enough permits that queues shouldn't
+     * be used so the implementations should be equivalent.
+     */
+    public enum ExecutorType {
+        QUEUELESS_VIEW() {
+            @Override
+            ExecutorService wrap(Executor delegate) {
+                return ViewExecutor.builder(delegate)
+                        .setQueueLimit(0)
+                        .setMaxSize(Short.MAX_VALUE)
+                        .build();
+            }
+        },
+        QUEUED() {
+            @Override
+            ExecutorService wrap(Executor delegate) {
+                return ViewExecutor.builder(delegate)
+                        .setQueueLimit(Integer.MAX_VALUE)
+                        .setMaxSize(Short.MAX_VALUE)
+                        .build();
+            }
+        };
+
+        abstract ExecutorService wrap(Executor delegate);
+    }
+
+    @Parameterized.Parameters(name = "{index}: {0}")
+    public static Iterable<Object[]> data() {
+        return Arrays.asList(new Object[][]{{ExecutorType.QUEUELESS_VIEW}, {ExecutorType.QUEUED}});
+    }
+
+    private final ExecutorType executorType;
+
+    public QueuelessViewExecutorTest(ExecutorType executorType) {
+        this.executorType = executorType;
+    }
 
     @Test
     public void testShutdownNow() throws InterruptedException {
         AtomicBoolean interrupted = new AtomicBoolean();
         ExecutorService cached = cachedExecutor();
-        ExecutorService view = ViewExecutor.builder(cached).setQueueLimit(0).setMaxSize(Short.MAX_VALUE).build();
+        ExecutorService view = executorType.wrap(cached);
         assertThat(view.isShutdown()).isEqualTo(cached.isShutdown()).isFalse();
         assertThat(view.isTerminated()).isEqualTo(cached.isTerminated()).isFalse();
         CountDownLatch executionStartedLatch = new CountDownLatch(1);
@@ -80,7 +123,7 @@ public class QueuelessViewExecutorTest {
     public void testShutdownNow_immediatelyAfterTaskIsSubmitted() throws InterruptedException {
         AtomicBoolean interrupted = new AtomicBoolean();
         ExecutorService cached = cachedExecutor();
-        ExecutorService view = ViewExecutor.builder(runnable -> {
+        ExecutorService view = executorType.wrap(runnable -> {
             cached.execute(() -> {
                 // Emphasize the jitter between when a task is submitted, and when it begins to execute
                 try {
@@ -90,7 +133,7 @@ public class QueuelessViewExecutorTest {
                 }
                 runnable.run();
             });
-        }).setQueueLimit(0).setMaxSize(Short.MAX_VALUE).build();
+        });
         assertThat(view.isShutdown()).isEqualTo(cached.isShutdown()).isFalse();
         assertThat(view.isTerminated()).isEqualTo(cached.isTerminated()).isFalse();
         view.execute(() -> {
@@ -113,7 +156,7 @@ public class QueuelessViewExecutorTest {
     public void testAwaitTermination() throws InterruptedException {
         AtomicBoolean interrupted = new AtomicBoolean();
         ExecutorService cached = cachedExecutor();
-        ExecutorService view = ViewExecutor.builder(cached).setQueueLimit(0).setMaxSize(Short.MAX_VALUE).build();
+        ExecutorService view = executorType.wrap(cached);
         assertThat(view.isShutdown()).isEqualTo(cached.isShutdown()).isFalse();
         assertThat(view.isTerminated()).isEqualTo(cached.isTerminated()).isFalse();
         view.execute(() -> {
@@ -145,7 +188,7 @@ public class QueuelessViewExecutorTest {
     public void testShutdown() throws InterruptedException {
         AtomicBoolean interrupted = new AtomicBoolean();
         ExecutorService cached = cachedExecutor();
-        ExecutorService view = ViewExecutor.builder(cached).setQueueLimit(0).setMaxSize(Short.MAX_VALUE).build();
+        ExecutorService view = executorType.wrap(cached);
         assertThat(view.isShutdown()).isEqualTo(cached.isShutdown()).isFalse();
         assertThat(view.isTerminated()).isEqualTo(cached.isTerminated()).isFalse();
         CountDownLatch executionStartedLatch = new CountDownLatch(1);
