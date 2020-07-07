@@ -143,8 +143,8 @@ final class QueuedViewExecutor extends ViewExecutor {
                 }
                 runTermination();
             } else {
-                lock.unlock();
                 this.state = ST_SHUTDOWN_INT_REQ;
+                lock.unlock();
                 // interrupt all runners
                 for (TaskWrapper wrapper : allWrappers) {
                     wrapper.interrupt();
