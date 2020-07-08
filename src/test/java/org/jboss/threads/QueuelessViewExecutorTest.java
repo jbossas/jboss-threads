@@ -114,7 +114,7 @@ public class QueuelessViewExecutorTest {
         });
         interruptedLatch.countDown();
         Awaitility.waitAtMost(500, TimeUnit.MILLISECONDS)
-                .untilAsserted(() -> assertThat(view.isTerminated()).isTrue());
+                .untilAsserted(() -> assertThat(view.isTerminated()).as("%s", view).isTrue());
 
         assertCleanShutdown(cached);
     }
@@ -145,7 +145,7 @@ public class QueuelessViewExecutorTest {
         });
         assertThat(view.shutdownNow()).as("Cached executors have no queue").isEmpty();
         assertThat(view.awaitTermination(3, TimeUnit.SECONDS))
-                .as("View failed to terminate within 3 seconds")
+                .as("View failed to terminate within 3 seconds: %s", view)
                 .isTrue();
         assertThat(interrupted).as("Task should have been interrupted").isTrue();
 
@@ -176,7 +176,7 @@ public class QueuelessViewExecutorTest {
 
         assertThat(view.shutdownNow()).as("Cached executors have no queue").isEmpty();
         assertThat(view.awaitTermination(3, TimeUnit.SECONDS))
-                .as("Task should have been interrupted")
+                .as("Task should have been interrupted: %s", view)
                 .isTrue();
 
         assertThat(interrupted).as("Task should be interrupted by 'shutdownNow'").isTrue();
@@ -208,7 +208,7 @@ public class QueuelessViewExecutorTest {
                 .isInstanceOf(RejectedExecutionException.class);
         assertThat(view.isTerminated()).isFalse();
         Awaitility.waitAtMost(600, TimeUnit.MILLISECONDS)
-                .untilAsserted(() -> assertThat(view.isTerminated()).isTrue());
+                .untilAsserted(() -> assertThat(view.isTerminated()).as("%s", view).isTrue());
         assertThat(interrupted).isFalse();
 
         assertCleanShutdown(cached);

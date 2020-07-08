@@ -2,13 +2,18 @@ package org.jboss.threads;
 
 import org.wildfly.common.Assert;
 
+import java.security.PrivilegedAction;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.Executor;
+
+import static java.security.AccessController.doPrivileged;
 
 /**
  * An executor service that is actually a "view" over another executor service.
  */
 public abstract class ViewExecutor extends AbstractExecutorService {
+
+    private static final boolean USE_V2 = readBooleanPropertyPrefixed("v2", true);
 
     private volatile Thread.UncaughtExceptionHandler handler;
     private volatile Runnable terminationTask;
@@ -100,6 +105,14 @@ public abstract class ViewExecutor extends AbstractExecutorService {
         }
 
         public ViewExecutor build() {
+            if (USE_V2) {
+                // queueInitialSize is not relevant using ConcurrentLinkedQueue
+                return new EnhancedViewExecutor(
+                        Assert.checkNotNullParam("delegate", delegate),
+                        maxSize,
+                        queueLimit,
+                        handler);
+            }
             if (queueLimit == 0) {
                 return new QueuelessViewExecutor(Assert.checkNotNullParam("delegate", delegate), maxSize, handler);
             }
@@ -126,5 +139,34 @@ public abstract class ViewExecutor extends AbstractExecutorService {
                 }
             }
         }
+    }
+
+    static boolean readBooleanPropertyPrefixed(String name, boolean defVal) {
+        return Boolean.parseBoolean(readPropertyPrefixed(name, Boolean.toString(defVal)));
+    }
+
+    static int readIntPropertyPrefixed(String name, int defVal) {
+        try {
+            return Integer.parseInt(readPropertyPrefixed(name, Integer.toString(defVal)));
+        } catch (NumberFormatException ignored) {
+            return defVal;
+        }
+    }
+
+    static String readPropertyPrefixed(String name, String defVal) {
+        return readProperty("org.jboss.threads.view-executor." + name, defVal);
+    }
+
+    static String readProperty(String name, String defVal) {
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            return doPrivileged((PrivilegedAction<String>) () -> readPropertyRaw(name, defVal));
+        } else {
+            return readPropertyRaw(name, defVal);
+        }
+    }
+
+    static String readPropertyRaw(final String name, final String defVal) {
+        return System.getProperty(name, defVal);
     }
 }
