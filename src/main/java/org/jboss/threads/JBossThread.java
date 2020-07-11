@@ -44,7 +44,7 @@ public class JBossThread extends Thread {
 
     private static final int MAX_INTERRUPT_SPINS = AccessController.doPrivileged(new PrivilegedAction<Integer>() {
         public Integer run() {
-            return Integer.valueOf(Integer.parseInt(System.getProperty("jboss.threads.interrupt.spins", ProcessorInfo.availableProcessors() == 0 ? "0" : "128")));
+            return Integer.valueOf(Integer.parseInt(System.getProperty("jboss.threads.interrupt.spins", ProcessorInfo.availableProcessors() == 1 ? "0" : "128")));
         }
     }).intValue();
 
