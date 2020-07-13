@@ -189,6 +189,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      */
     private final AccessControlContext acc;
 
+    /**
+     * Whether incoming tasks are wrapped using {@link JBossExecutors#classLoaderPreservingTaskUnchecked(Runnable)}.
+     */
+    private final boolean preserveContextClassLoaders;
+
     // =======================================================
     // Current state fields
     // =======================================================
@@ -351,6 +356,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         this.threadFactory = builder.getThreadFactory();
         this.terminationTask = builder.getTerminationTask();
         this.growthResistance = builder.getGrowthResistance();
+        this.preserveContextClassLoaders = builder.preserveContextClassLoaders;
         final Duration keepAliveTime = builder.getKeepAliveTime();
         // initial dead node
         // thread stat
@@ -409,6 +415,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         private int maxQueueSize = Integer.MAX_VALUE;
         private boolean registerMBean = REGISTER_MBEAN;
         private String mBeanName;
+        private boolean preserveContextClassLoaders = true;
 
         /**
          * Construct a new instance.
@@ -731,6 +738,26 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          */
         public Builder setMBeanName(final String mBeanName) {
             this.mBeanName = mBeanName;
+            return this;
+        }
+
+        /**
+         * Returns true if submitting threads context classloaders are preserved.
+         *
+         * @see #setPreserveContextClassLoaders(boolean)
+         */
+        public boolean getPreserveContextClassLoaders() {
+            return preserveContextClassLoaders;
+        }
+
+        /**
+         * Configures whether tasks submitted to this executor will preserve the callers context classloader.
+         * By default context class loaders are preserved.
+         *
+         * @see JBossExecutors#classLoaderPreservingTaskUnchecked(Runnable)
+         */
+        public Builder setPreserveContextClassLoaders(final boolean preserveContextClassLoaders) {
+            this.preserveContextClassLoaders = preserveContextClassLoaders;
             return this;
         }
     }

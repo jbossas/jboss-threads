@@ -50,6 +50,7 @@ public abstract class ViewExecutor extends AbstractExecutorService {
         private short maxSize = 1;
         private int queueLimit = Integer.MAX_VALUE;
         private int queueInitialSize = 256;
+        private boolean preserveContextClassLoaders = true;
         private Thread.UncaughtExceptionHandler handler = JBossExecutors.loggingExceptionHandler();
 
         Builder(final Executor delegate) {
@@ -99,15 +100,40 @@ public abstract class ViewExecutor extends AbstractExecutorService {
             return this;
         }
 
+        /**
+         * Returns true if submitting threads context classloaders are preserved.
+         *
+         * @see #setPreserveContextClassLoaders(boolean)
+         */
+        public boolean getPreserveContextClassLoaders() {
+            return preserveContextClassLoaders;
+        }
+
+        /**
+         * Configures whether tasks submitted to this executor will preserve the callers context classloader.
+         * By default context class loaders are preserved.
+         *
+         * @see JBossExecutors#classLoaderPreservingTaskUnchecked(Runnable)
+         */
+        public Builder setPreserveContextClassLoaders(final boolean preserveContextClassLoaders) {
+            this.preserveContextClassLoaders = preserveContextClassLoaders;
+            return this;
+        }
+
         public ViewExecutor build() {
             if (queueLimit == 0) {
-                return new QueuelessViewExecutor(Assert.checkNotNullParam("delegate", delegate), maxSize, handler);
+                return new QueuelessViewExecutor(
+                        Assert.checkNotNullParam("delegate", delegate),
+                        maxSize,
+                        preserveContextClassLoaders,
+                        handler);
             }
             return new QueuedViewExecutor(
                     Assert.checkNotNullParam("delegate", delegate),
                     maxSize,
                     queueLimit,
                     queueInitialSize,
+                    preserveContextClassLoaders,
                     handler);
         }
     }

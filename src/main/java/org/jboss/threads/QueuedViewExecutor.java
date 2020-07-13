@@ -30,6 +30,7 @@ final class QueuedViewExecutor extends ViewExecutor {
     private final Set<TaskWrapper> allWrappers = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final int queueLimit;
     private final short maxCount;
+    private final boolean preserveContextClassLoaders;
     private short submittedCount;
     private short runningCount;
     private int state = ST_RUNNING;
@@ -44,10 +45,12 @@ final class QueuedViewExecutor extends ViewExecutor {
             final short maxCount,
             final int queueLimit,
             final int queueInitialSize,
+            final boolean preserveContextClassLoaders,
             final Thread.UncaughtExceptionHandler handler) {
         this.delegate = delegate;
         this.maxCount = maxCount;
         this.queueLimit = queueLimit;
+        this.preserveContextClassLoaders = preserveContextClassLoaders;
         this.setExceptionHandler(handler);
         queue = new ArrayDeque<>(Math.min(queueLimit, queueInitialSize));
         lock = Locks.reentrantLock();
@@ -63,7 +66,9 @@ final class QueuedViewExecutor extends ViewExecutor {
             final short submittedCount = this.submittedCount;
             if (runningCount + submittedCount < maxCount) {
                 this.submittedCount = (short) (submittedCount + 1);
-                final TaskWrapper tw = new TaskWrapper(JBossExecutors.classLoaderPreservingTask(command));
+                final TaskWrapper tw = new TaskWrapper(preserveContextClassLoaders
+                        ? JBossExecutors.classLoaderPreservingTaskUnchecked(command)
+                        : command);
                 allWrappers.add(tw);
                 try {
                     /* this cannot be easily moved outside of the lock, otherwise queued tasks might never run

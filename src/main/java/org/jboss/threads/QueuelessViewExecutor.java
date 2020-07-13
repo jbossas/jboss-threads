@@ -55,6 +55,7 @@ final class QueuelessViewExecutor extends ViewExecutor {
 
     private final Executor delegate;
     private final int maxCount;
+    final boolean preserveContextClassLoaders;
 
     private final Object shutdownLock = new Object();
     private final Set<QueuelessViewExecutorRunnable> activeRunnables = ConcurrentHashMap.newKeySet();
@@ -74,9 +75,11 @@ final class QueuelessViewExecutor extends ViewExecutor {
     QueuelessViewExecutor(
             final Executor delegate,
             final int maxCount,
+            final boolean preserveContextClassLoaders,
             @Nullable final Thread.UncaughtExceptionHandler uncaughtExceptionHandler) {
         this.delegate = Assert.checkNotNullParam("delegate", delegate);
         this.maxCount = maxCount;
+        this.preserveContextClassLoaders = preserveContextClassLoaders;
         this.setExceptionHandler(uncaughtExceptionHandler);
     }
 
@@ -159,7 +162,9 @@ final class QueuelessViewExecutor extends ViewExecutor {
         boolean submittedTask = false;
         try {
             // When CachedExecutorViewRunnable allocation fails the active count must be reduced.
-            delegate.execute(new QueuelessViewExecutorRunnable(task));
+            delegate.execute(new QueuelessViewExecutorRunnable(preserveContextClassLoaders
+                    ? JBossExecutors.classLoaderPreservingTaskUnchecked(task)
+                    : task));
             submittedTask = true;
         } finally {
             if (!submittedTask) decrementActive();
