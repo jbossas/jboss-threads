@@ -1,7 +1,6 @@
 package org.jboss.threads;
 
 import org.jboss.logging.Logger;
-import org.wildfly.common.Assert;
 import org.wildfly.common.lock.ExtendedLock;
 import org.wildfly.common.lock.Locks;
 
@@ -10,7 +9,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
@@ -216,7 +214,7 @@ final class QueuedViewExecutor extends ViewExecutor {
             this.command = command;
         }
 
-        void interrupt() {
+        synchronized void interrupt() {
             final Thread thread = this.thread;
             if (thread != null) {
                 thread.interrupt();
@@ -224,7 +222,7 @@ final class QueuedViewExecutor extends ViewExecutor {
         }
 
         public void run() {
-            boolean removeFromAllWrappersAfterCompletion = true;
+            boolean resetStateOnCompletion = true;
             thread = Thread.currentThread();
             try {
                 for (;;) {
@@ -232,6 +230,14 @@ final class QueuedViewExecutor extends ViewExecutor {
                     try {
                         submittedCount--;
                         runningCount++;
+
+                        // Interruption may be missed between when a TaskWrapper is submitted
+                        // to the delegate executor, and when the task begins to execute.
+                        // This must execute after thread is set.
+                        // Must occur in the retry loop to set interruption when requested
+                        // after a command has consumed an initial interruption and the
+                        // delegate has rejected the next command.
+                        if (state == ST_SHUTDOWN_INT_REQ) Thread.currentThread().interrupt();
                     } finally {
                         lock.unlock();
                     }
@@ -270,22 +276,32 @@ final class QueuedViewExecutor extends ViewExecutor {
                         return;
                     }
                     try {
+                        // Unset the current thread prior to resubmitting this task to avoid clobbering the value
+                        // if the delegate executes in parallel to the finally block.
+                        unsetThread();
                         delegate.execute(this);
-                        removeFromAllWrappersAfterCompletion = false;
+                        resetStateOnCompletion = false;
                         // resubmitted this task for execution, so return
                         return;
                     } catch (Throwable t) {
                         log.warn("Failed to resubmit executor task to delegate executor"
                             + " (executing task immediately instead)", t);
-                        // resubmit failed, so continue execution in this thread
+                        // resubmit failed, so continue execution in this thread after resetting state
+                        thread = Thread.currentThread();
                     }
                 }
             } finally {
-                if (removeFromAllWrappersAfterCompletion) {
+                if (resetStateOnCompletion) {
                     allWrappers.remove(this);
+                    unsetThread();
                 }
-                thread = null;
             }
+        }
+
+        // Must be synchronized with interrupt() to avoid acquiring the thread reference as work completes
+        // and interrupting the next task run by this thread which may not originate from this view.
+        private synchronized void unsetThread() {
+            thread = null;
         }
     }
 }
