@@ -63,7 +63,7 @@ final class QueuedViewExecutor extends ViewExecutor {
             final short submittedCount = this.submittedCount;
             if (runningCount + submittedCount < maxCount) {
                 this.submittedCount = (short) (submittedCount + 1);
-                final TaskWrapper tw = new TaskWrapper(JBossExecutors.classLoaderPreservingTask(command));
+                final TaskWrapper tw = new TaskWrapper(JBossExecutors.classLoaderPreservingTaskUnchecked(command));
                 allWrappers.add(tw);
                 try {
                     /* this cannot be easily moved outside of the lock, otherwise queued tasks might never run
