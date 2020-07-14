@@ -159,7 +159,8 @@ final class QueuelessViewExecutor extends ViewExecutor {
         boolean submittedTask = false;
         try {
             // When CachedExecutorViewRunnable allocation fails the active count must be reduced.
-            delegate.execute(new QueuelessViewExecutorRunnable(task));
+            delegate.execute(new QueuelessViewExecutorRunnable(
+                    JBossExecutors.classLoaderPreservingTaskUnchecked(task)));
             submittedTask = true;
         } finally {
             if (!submittedTask) decrementActive();
