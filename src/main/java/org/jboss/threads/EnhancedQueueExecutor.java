@@ -746,7 +746,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      */
     public void execute(Runnable runnable) {
         Assert.checkNotNullParam("runnable", runnable);
-        final Runnable realRunnable = JBossExecutors.classLoaderPreservingTaskUnchecked(runnable);
+        final Task realRunnable = new Task(runnable);
         int result;
         result = tryExecute(realRunnable);
         boolean ok = false;
@@ -806,7 +806,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     head.setNextOrdered(head);
                     if (! NO_QUEUE_LIMIT) decreaseQueueSize();
                     head = taskNode;
-                    list.add(taskNode.task);
+                    list.add(taskNode.task.handoff());
                 }
                 // retry
             } else {
@@ -1407,9 +1407,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     final class ThreadBody implements Runnable {
-        private Runnable initialTask;
+        private Task initialTask;
 
-        ThreadBody(final Runnable initialTask) {
+        ThreadBody(final Task initialTask) {
             this.initialTask = initialTask;
         }
 
@@ -1423,7 +1423,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             runningThreads.add(currentThread);
 
             // run the initial task
-            doRunTask(getAndClearInitialTask());
+            nullToNop(getAndClearInitialTask()).run();
 
             // Eagerly allocate a PoolThreadNode for the next time it's needed
             PoolThreadNode nextPoolThreadNode = new PoolThreadNode(currentThread);
@@ -1433,7 +1433,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 node = getOrAddNode(nextPoolThreadNode);
                 if (node instanceof TaskNode) {
                     // task node was removed
-                    doRunTask(((TaskNode) node).getAndClearTask());
+                    ((TaskNode) node).getAndClearTask().run();
                     continue;
                 } else if (node == nextPoolThreadNode) {
                     // pool thread node was added
@@ -1445,11 +1445,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     long elapsed = 0L;
                     waitingForTask: for (;;) {
                         Runnable task = newNode.getTask();
-                        assert task != ACCEPTED && task != GAVE_UP;
+                        assert task != ACCEPTED && task != GAVE_UP && task != null;
                         if (task != WAITING && task != EXIT) {
                             if (newNode.compareAndSetTask(task, ACCEPTED)) {
                                 // we have a task to run, so run it and then abandon the node
-                                doRunTask(task);
+                                task.run();
                                 // rerun outer
                                 continue processingQueue;
                             }
@@ -1556,30 +1556,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         private Runnable getAndClearInitialTask() {
-            try {
-                return initialTask;
-            } finally {
-                this.initialTask = null;
-            }
-        }
-
-        void doRunTask(final Runnable task) {
-            if (task != null) {
-                if (isShutdownInterrupt(threadStatus)) {
-                    Thread.currentThread().interrupt();
-                } else {
-                    Thread.interrupted();
-                }
-                if (UPDATE_ACTIVE_COUNT) incrementActiveCount();
-                safeRun(task);
-                Thread.interrupted();
-                if (UPDATE_ACTIVE_COUNT) {
-                    decrementActiveCount();
-                    if (UPDATE_STATISTICS) {
-                        completedTaskCounter.increment();
-                    }
-                }
-            }
+            Runnable initial = initialTask;
+            this.initialTask = null;
+            return initial;
         }
     }
 
@@ -1682,7 +1661,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @return {@code true} if the thread was started, {@code false} otherwise
      * @throws RejectedExecutionException if {@code runnable} is not {@code null} and the thread could not be created or started
      */
-    boolean doStartThread(Runnable runnable) throws RejectedExecutionException {
+    boolean doStartThread(Task runnable) throws RejectedExecutionException {
         Thread thread;
         try {
             thread = threadFactory.newThread(new ThreadBody(runnable));
@@ -1716,7 +1695,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // Task submission
     // =======================================================
 
-    private int tryExecute(final Runnable runnable) {
+    private int tryExecute(final Task runnable) {
         QNode tailNext;
         TaskNode tail = this.tail;
         TaskNode node = null;
@@ -1856,7 +1835,15 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         try {
             final Runnable terminationTask = JBossExecutors.classLoaderPreservingTask(this.terminationTask);
             this.terminationTask = null;
-            safeRun(terminationTask);
+            try {
+                terminationTask.run();
+            } catch (Throwable t) {
+                try {
+                    exceptionHandler.uncaughtException(Thread.currentThread(), t);
+                } catch (Throwable ignored) {
+                    // nothing else we can safely do here
+                }
+            }
             // notify all waiters
             Waiter waiters = getAndSetTerminationWaiters(TERMINATE_COMPLETE_WAITER);
             while (waiters != null) {
@@ -2042,53 +2029,44 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // Utilities
     // =======================================================
 
-    void safeRun(final Runnable task) {
-        if (task == null) return;
+    void rejectException(final Task task, final Throwable cause) {
         try {
-            task.run();
-        } catch (Throwable t) {
-            try {
-                exceptionHandler.uncaughtException(Thread.currentThread(), t);
-            } catch (Throwable ignored) {
-                // nothing else we can safely do here
-            }
-        }
-    }
-
-    void rejectException(final Runnable task, final Throwable cause) {
-        try {
-            handoffExecutor.execute(task);
+            handoffExecutor.execute(task.handoff());
         } catch (Throwable t) {
             t.addSuppressed(cause);
             throw t;
         }
     }
 
-    void rejectNoThread(final Runnable task) {
+    void rejectNoThread(final Task task) {
         try {
-            handoffExecutor.execute(task);
+            handoffExecutor.execute(task.handoff());
         } catch (Throwable t) {
             t.addSuppressed(new RejectedExecutionException("No threads available"));
             throw t;
         }
     }
 
-    void rejectQueueFull(final Runnable task) {
+    void rejectQueueFull(final Task task) {
         try {
-            handoffExecutor.execute(task);
+            handoffExecutor.execute(task.handoff());
         } catch (Throwable t) {
             t.addSuppressed(new RejectedExecutionException("Queue is full"));
             throw t;
         }
     }
 
-    void rejectShutdown(final Runnable task) {
+    void rejectShutdown(final Task task) {
         try {
-            handoffExecutor.execute(task);
+            handoffExecutor.execute(task.handoff());
         } catch (Throwable t) {
             t.addSuppressed(new RejectedExecutionException("Executor is being shut down"));
             throw t;
         }
+    }
+
+    static Runnable nullToNop(final Runnable task) {
+        return task == null ? NullRunnable.getInstance() : task;
     }
 
     // =======================================================
@@ -2281,9 +2259,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     }
 
     static final class TaskNode extends QNode {
-        Runnable task;
+        Task task;
 
-        TaskNode(final Runnable task) {
+        TaskNode(final Task task) {
             // we always start task nodes with a {@code null} next
             this.task = task;
         }
@@ -2425,6 +2403,61 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         public long getSpinMissCount() {
             return EnhancedQueueExecutor.this.spinMisses.longValue();
+        }
+    }
+
+    final class Task implements Runnable {
+
+        private final Runnable delegate;
+        private final ClassLoader contextClassLoader;
+
+        Task(Runnable delegate) {
+            Assert.checkNotNullParam("delegate", delegate);
+            this.delegate = delegate;
+            this.contextClassLoader = JBossExecutors.getContextClassLoader(Thread.currentThread());
+        }
+
+        @Override
+        public void run() {
+            if (isShutdownInterrupt(threadStatus)) {
+                Thread.currentThread().interrupt();
+            } else {
+                Thread.interrupted();
+            }
+            if (UPDATE_ACTIVE_COUNT) incrementActiveCount();
+            final Thread currentThread = Thread.currentThread();
+            final ClassLoader old = JBossExecutors.getAndSetContextClassLoader(currentThread, contextClassLoader);
+            try {
+                delegate.run();
+            } catch (Throwable t) {
+                try {
+                    exceptionHandler.uncaughtException(Thread.currentThread(), t);
+                } catch (Throwable ignored) {
+                    // nothing else we can safely do here
+                }
+            } finally {
+                JBossExecutors.setContextClassLoader(currentThread, old);
+            }
+            Thread.interrupted();
+            if (UPDATE_ACTIVE_COUNT) {
+                decrementActiveCount();
+                if (UPDATE_STATISTICS) {
+                    completedTaskCounter.increment();
+                }
+            }
+        }
+
+        /**
+         * Extracts the original runnable without EQE-specific state updating. This runnable does retain the original
+         * context classloader from the submitting thread.
+         */
+        Runnable handoff() {
+            return new ContextClassLoaderSavingRunnable(contextClassLoader, delegate);
+        }
+
+        @Override
+        public String toString() {
+            return "Task{delegate=" + delegate + ", contextClassLoader=" + contextClassLoader + '}';
         }
     }
 }

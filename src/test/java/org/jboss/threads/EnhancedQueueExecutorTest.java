@@ -3,8 +3,12 @@ package org.jboss.threads;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import junit.framework.TestCase;
 import org.junit.Ignore;
@@ -151,6 +155,56 @@ public class EnhancedQueueExecutorTest {
         assertEquals("expected: == " + coreSize + ", actual: " + prestarted, prestarted, coreSize);
         assertEquals("expected: == " + coreSize + ", actual: " + executor.getPoolSize(), executor.getPoolSize(), coreSize);
         executor.shutdown();
+    }
+
+    @Test
+    public void testStackDepth() throws InterruptedException {
+        // Test exists to acknowledge changes which result in greater stack depth making stack traces
+        // created within the executor more difficult to follow. This isn't something that we should
+        // necessarily optimize for, rather something we should keep in mind when other options exist.
+        final int expectedStackFrames = 6;
+        assertStackDepth(new EnhancedQueueExecutor.Builder()
+                .setCorePoolSize(1)
+                .setMaximumPoolSize(1)
+                .build(), expectedStackFrames);
+        // Use a standard ThreadPoolExecutor as a baseline for comparison.
+        assertStackDepth(Executors.newSingleThreadExecutor(), expectedStackFrames);
+    }
+
+    public void assertStackDepth(ExecutorService executor, int expectedStackFrames) throws InterruptedException {
+        CountDownLatch initialTaskCompletionBlockingLatch = new CountDownLatch(1);
+        AtomicInteger initialTaskStackFrames = new AtomicInteger();
+        Runnable initialTask = new Runnable() {
+            @Override
+            public void run() {
+                initialTaskStackFrames.set(new RuntimeException().getStackTrace().length);
+                try {
+                    initialTaskCompletionBlockingLatch.await();
+                } catch (InterruptedException e) {
+                    throw new AssertionError(e);
+                }
+            }
+        };
+        CountDownLatch queuedTaskCompletionLatch = new CountDownLatch(1);
+        AtomicInteger queuedTaskStackFrames = new AtomicInteger();
+        Runnable queuedTask = new Runnable() {
+            @Override
+            public void run() {
+                queuedTaskStackFrames.set(new RuntimeException().getStackTrace().length);
+                queuedTaskCompletionLatch.countDown();
+            }
+        };
+        try {
+            executor.submit(initialTask);
+            executor.submit(queuedTask);
+            initialTaskCompletionBlockingLatch.countDown();
+            queuedTaskCompletionLatch.await();
+            assertEquals(expectedStackFrames, initialTaskStackFrames.get());
+            assertEquals(expectedStackFrames, queuedTaskStackFrames.get());
+        } finally {
+            executor.shutdown();
+            assertTrue("Executor failed to terminate", executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
     }
 
     private void waitForPoolSize(EnhancedQueueExecutor executor, int expectedPoolSize, long waitMillis) throws TimeoutException, InterruptedException {
