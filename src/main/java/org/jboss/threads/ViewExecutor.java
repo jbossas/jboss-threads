@@ -95,10 +95,20 @@ public abstract class ViewExecutor extends AbstractExecutorService {
             return this;
         }
 
+        /**
+         * Get the initial queue size of the resulting executor. This value has no impact unless
+         * {@code org.jboss.threads.view-executor.v2} is set to {@code false}.
+         */
+        @Deprecated
         public int getQueueInitialSize() {
             return queueInitialSize;
         }
 
+        /**
+         * Set the initial queue size of the executor. This option has no impact unless
+         * {@code org.jboss.threads.view-executor.v2} is set to {@code false}.
+         */
+        @Deprecated
         public Builder setQueueInitialSize(final int queueInitialSize) {
             this.queueInitialSize = queueInitialSize;
             return this;
