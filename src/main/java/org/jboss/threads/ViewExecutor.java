@@ -13,8 +13,6 @@ import static java.security.AccessController.doPrivileged;
  */
 public abstract class ViewExecutor extends AbstractExecutorService {
 
-    private static final boolean USE_V2 = readBooleanPropertyPrefixed("v2", true);
-
     private volatile Thread.UncaughtExceptionHandler handler;
     private volatile Runnable terminationTask;
 
@@ -54,7 +52,6 @@ public abstract class ViewExecutor extends AbstractExecutorService {
         private final Executor delegate;
         private short maxSize = 1;
         private int queueLimit = Integer.MAX_VALUE;
-        private int queueInitialSize = 256;
         private Thread.UncaughtExceptionHandler handler = JBossExecutors.loggingExceptionHandler();
 
         Builder(final Executor delegate) {
@@ -96,38 +93,26 @@ public abstract class ViewExecutor extends AbstractExecutorService {
         }
 
         /**
-         * Get the initial queue size of the resulting executor. This value has no impact unless
-         * {@code org.jboss.threads.view-executor.v2} is set to {@code false}.
+         * @deprecated This value no longer has any impact.
          */
         @Deprecated
         public int getQueueInitialSize() {
-            return queueInitialSize;
+            return 0;
         }
 
         /**
-         * Set the initial queue size of the executor. This option has no impact unless
-         * {@code org.jboss.threads.view-executor.v2} is set to {@code false}.
+         * @deprecated This option no longer has any impact.
          */
         @Deprecated
-        public Builder setQueueInitialSize(final int queueInitialSize) {
-            this.queueInitialSize = queueInitialSize;
+        public Builder setQueueInitialSize(@SuppressWarnings("unused") final int queueInitialSize) {
             return this;
         }
 
         public ViewExecutor build() {
-            if (USE_V2 || queueLimit == 0) {
-                // queueInitialSize is not relevant using ConcurrentLinkedQueue
-                return new EnhancedViewExecutor(
-                        Assert.checkNotNullParam("delegate", delegate),
-                        maxSize,
-                        queueLimit,
-                        handler);
-            }
-            return new QueuedViewExecutor(
+            return new EnhancedViewExecutor(
                     Assert.checkNotNullParam("delegate", delegate),
                     maxSize,
                     queueLimit,
-                    queueInitialSize,
                     handler);
         }
     }
@@ -146,10 +131,6 @@ public abstract class ViewExecutor extends AbstractExecutorService {
                 }
             }
         }
-    }
-
-    static boolean readBooleanPropertyPrefixed(String name, boolean defVal) {
-        return Boolean.parseBoolean(readPropertyPrefixed(name, Boolean.toString(defVal)));
     }
 
     static int readIntPropertyPrefixed(String name, int defVal) {
