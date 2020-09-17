@@ -105,16 +105,13 @@ public abstract class ViewExecutor extends AbstractExecutorService {
         }
 
         public ViewExecutor build() {
-            if (USE_V2) {
+            if (USE_V2 || queueLimit == 0) {
                 // queueInitialSize is not relevant using ConcurrentLinkedQueue
                 return new EnhancedViewExecutor(
                         Assert.checkNotNullParam("delegate", delegate),
                         maxSize,
                         queueLimit,
                         handler);
-            }
-            if (queueLimit == 0) {
-                return new QueuelessViewExecutor(Assert.checkNotNullParam("delegate", delegate), maxSize, handler);
             }
             return new QueuedViewExecutor(
                     Assert.checkNotNullParam("delegate", delegate),
