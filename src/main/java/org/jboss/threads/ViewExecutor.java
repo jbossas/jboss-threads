@@ -2,8 +2,11 @@ package org.jboss.threads;
 
 import org.wildfly.common.Assert;
 
+import java.security.PrivilegedAction;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.Executor;
+
+import static java.security.AccessController.doPrivileged;
 
 /**
  * An executor service that is actually a "view" over another executor service.
@@ -49,7 +52,6 @@ public abstract class ViewExecutor extends AbstractExecutorService {
         private final Executor delegate;
         private short maxSize = 1;
         private int queueLimit = Integer.MAX_VALUE;
-        private int queueInitialSize = 256;
         private Thread.UncaughtExceptionHandler handler = JBossExecutors.loggingExceptionHandler();
 
         Builder(final Executor delegate) {
@@ -90,24 +92,27 @@ public abstract class ViewExecutor extends AbstractExecutorService {
             return this;
         }
 
+        /**
+         * @deprecated This value no longer has any impact.
+         */
+        @Deprecated
         public int getQueueInitialSize() {
-            return queueInitialSize;
+            return 0;
         }
 
-        public Builder setQueueInitialSize(final int queueInitialSize) {
-            this.queueInitialSize = queueInitialSize;
+        /**
+         * @deprecated This option no longer has any impact.
+         */
+        @Deprecated
+        public Builder setQueueInitialSize(@SuppressWarnings("unused") final int queueInitialSize) {
             return this;
         }
 
         public ViewExecutor build() {
-            if (queueLimit == 0) {
-                return new QueuelessViewExecutor(Assert.checkNotNullParam("delegate", delegate), maxSize, handler);
-            }
-            return new QueuedViewExecutor(
+            return new EnhancedViewExecutor(
                     Assert.checkNotNullParam("delegate", delegate),
                     maxSize,
                     queueLimit,
-                    queueInitialSize,
                     handler);
         }
     }
@@ -126,5 +131,30 @@ public abstract class ViewExecutor extends AbstractExecutorService {
                 }
             }
         }
+    }
+
+    static int readIntPropertyPrefixed(String name, int defVal) {
+        try {
+            return Integer.parseInt(readPropertyPrefixed(name, Integer.toString(defVal)));
+        } catch (NumberFormatException ignored) {
+            return defVal;
+        }
+    }
+
+    static String readPropertyPrefixed(String name, String defVal) {
+        return readProperty("org.jboss.threads.view-executor." + name, defVal);
+    }
+
+    static String readProperty(String name, String defVal) {
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            return doPrivileged((PrivilegedAction<String>) () -> readPropertyRaw(name, defVal));
+        } else {
+            return readPropertyRaw(name, defVal);
+        }
+    }
+
+    static String readPropertyRaw(final String name, final String defVal) {
+        return System.getProperty(name, defVal);
     }
 }
