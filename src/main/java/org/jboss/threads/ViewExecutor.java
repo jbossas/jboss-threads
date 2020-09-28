@@ -50,7 +50,7 @@ public abstract class ViewExecutor extends AbstractExecutorService {
 
     public static final class Builder {
         private final Executor delegate;
-        private short maxSize = 1;
+        private int maxSize = 1;
         private int queueLimit = Integer.MAX_VALUE;
         private Thread.UncaughtExceptionHandler handler = JBossExecutors.loggingExceptionHandler();
 
@@ -64,8 +64,7 @@ public abstract class ViewExecutor extends AbstractExecutorService {
 
         public Builder setMaxSize(final int maxSize) {
             Assert.checkMinimumParameter("maxSize", 1, maxSize);
-            Assert.checkMaximumParameter("maxSize", Short.MAX_VALUE, maxSize);
-            this.maxSize = (short) maxSize;
+            this.maxSize = maxSize;
             return this;
         }
 
