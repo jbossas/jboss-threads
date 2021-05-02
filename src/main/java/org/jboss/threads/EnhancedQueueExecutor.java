@@ -44,6 +44,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
 
@@ -275,9 +276,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     private static final long activeCountOffset;
     private static final long peakQueueSizeOffset;
 
-    private static final Object sequenceBase;
-    private static final long sequenceOffset;
-
     static {
         try {
             terminationWaitersOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("terminationWaiters"));
@@ -287,9 +285,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             peakThreadCountOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("peakThreadCount"));
             activeCountOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("activeCount"));
             peakQueueSizeOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("peakQueueSize"));
-
-            sequenceBase = unsafe.staticFieldBase(EnhancedQueueExecutor.class.getDeclaredField("sequence"));
-            sequenceOffset = unsafe.staticFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("sequence"));
         } catch (NoSuchFieldException e) {
             throw new NoSuchFieldError(e.getMessage());
         }
@@ -339,7 +334,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // Constructor
     // =======================================================
 
-    static volatile int sequence = 1;
+    static final AtomicInteger sequence = new AtomicInteger(1);
 
     EnhancedQueueExecutor(final Builder builder) {
         super();
@@ -360,7 +355,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         mxBean = new MXBeanImpl();
         if (! DISABLE_MBEAN && builder.isRegisterMBean()) {
             final String configuredName = builder.getMBeanName();
-            final String finalName = configuredName != null ? configuredName : "threadpool-" + unsafe.getAndAddInt(sequenceBase, sequenceOffset, 1);
+            final String finalName = configuredName != null ? configuredName : "threadpool-" + sequence.getAndIncrement();
             handle = doPrivileged(new MBeanRegisterAction(finalName, mxBean), acc);
         } else {
             handle = null;
