@@ -47,6 +47,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
@@ -189,6 +191,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * The access control context of the creating thread.
      */
     private final AccessControlContext acc;
+    /**
+     * The context handler for the user-defined context.
+     */
+    private final ContextHandler<?> contextHandler;
 
     // =======================================================
     // Current state fields
@@ -346,6 +352,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         this.threadFactory = builder.getThreadFactory();
         this.terminationTask = builder.getTerminationTask();
         this.growthResistance = builder.getGrowthResistance();
+        this.contextHandler = builder.getContextHandler();
         final Duration keepAliveTime = builder.getKeepAliveTime();
         // initial dead node
         // thread stat
@@ -404,6 +411,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         private int maxQueueSize = Integer.MAX_VALUE;
         private boolean registerMBean = REGISTER_MBEAN;
         private String mBeanName;
+        private ContextHandler<?> contextHandler = ContextHandler.NONE;
 
         /**
          * Construct a new instance.
@@ -728,6 +736,27 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             this.mBeanName = mBeanName;
             return this;
         }
+
+        /**
+         * Get the context handler for the user-defined context.
+         *
+         * @return the context handler for the user-defined context (not {@code null})
+         */
+        public ContextHandler<?> getContextHandler() {
+            return contextHandler;
+        }
+
+        /**
+         * Set the context handler for the user-defined context.
+         *
+         * @param contextHandler the context handler for the user-defined context
+         * @return this builder
+         */
+        public Builder setContextHandler(final ContextHandler<?> contextHandler) {
+            Assert.checkNotNullParam("contextHandler", contextHandler);
+            this.contextHandler = contextHandler;
+            return this;
+        }
     }
 
     // =======================================================
@@ -741,7 +770,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      */
     public void execute(Runnable runnable) {
         Assert.checkNotNullParam("runnable", runnable);
-        final Task realRunnable = new Task(runnable);
+        final Task realRunnable = new Task(runnable, contextHandler.captureContext());
         int result;
         result = tryExecute(realRunnable);
         boolean ok = false;
@@ -2389,14 +2418,17 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         private final Runnable delegate;
         private final ClassLoader contextClassLoader;
+        private final Object context;
 
-        Task(Runnable delegate) {
+        Task(Runnable delegate, final Object context) {
             Assert.checkNotNullParam("delegate", delegate);
             this.delegate = delegate;
+            this.context = context;
             this.contextClassLoader = JBossExecutors.getContextClassLoader(Thread.currentThread());
         }
 
         @Override
+        @SuppressWarnings("rawtypes")
         public void run() {
             if (isShutdownInterrupt(threadStatus)) {
                 Thread.currentThread().interrupt();
@@ -2407,7 +2439,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             final Thread currentThread = Thread.currentThread();
             final ClassLoader old = JBossExecutors.getAndSetContextClassLoader(currentThread, contextClassLoader);
             try {
-                delegate.run();
+                ((ContextHandler)contextHandler).runWith(delegate, context);
             } catch (Throwable t) {
                 try {
                     exceptionHandler.uncaughtException(Thread.currentThread(), t);
