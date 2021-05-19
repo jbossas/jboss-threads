@@ -166,7 +166,7 @@ public class EnhancedQueueExecutorTest {
         assertStackDepth(new EnhancedQueueExecutor.Builder()
                 .setCorePoolSize(1)
                 .setMaximumPoolSize(1)
-                .build(), expectedStackFrames);
+                .build(), expectedStackFrames + 1);
         // Use a standard ThreadPoolExecutor as a baseline for comparison.
         assertStackDepth(Executors.newSingleThreadExecutor(), expectedStackFrames);
     }
