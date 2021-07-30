@@ -189,6 +189,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     private final Object handle;
     /**
      * The access control context of the creating thread.
+     * Will be set to null when the MBean is not registered.
      */
     private final AccessControlContext acc;
     /**
@@ -344,7 +345,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     EnhancedQueueExecutor(final Builder builder) {
         super();
-        this.acc = getContext();
         int maxSize = builder.getMaximumPoolSize();
         int coreSize = min(builder.getCorePoolSize(), maxSize);
         this.handoffExecutor = builder.getHandoffExecutor();
@@ -361,11 +361,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         queueSize = withMaxQueueSize(withCurrentQueueSize(0L, 0), builder.getMaximumQueueSize());
         mxBean = new MXBeanImpl();
         if (! DISABLE_MBEAN && builder.isRegisterMBean()) {
+            this.acc = getContext();
             final String configuredName = builder.getMBeanName();
             final String finalName = configuredName != null ? configuredName : "threadpool-" + sequence.getAndIncrement();
             handle = doPrivileged(new MBeanRegisterAction(finalName, mxBean), acc);
         } else {
             handle = null;
+            this.acc = null;
         }
     }
 
@@ -1859,7 +1861,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 waiters = waiters.getNext();
             }
             tail.setNext(TERMINATE_COMPLETE);
-            if (! DISABLE_MBEAN) {
+            if (this.acc != null) {
                 final Object handle = this.handle;
                 if (handle != null) {
                     intr = intr || Thread.interrupted();
