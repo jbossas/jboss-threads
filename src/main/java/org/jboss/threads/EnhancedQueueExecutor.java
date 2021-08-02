@@ -191,7 +191,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * The access control context of the creating thread.
      * Will be set to null when the MBean is not registered.
      */
-    private final AccessControlContext acc;
+    private volatile AccessControlContext acc;
     /**
      * The context handler for the user-defined context.
      */
@@ -1867,6 +1867,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     intr = intr || Thread.interrupted();
                     doPrivileged(new MBeanUnregisterAction(handle), acc);
                 }
+                this.acc = null;
             }
         } finally {
             if (intr) {
