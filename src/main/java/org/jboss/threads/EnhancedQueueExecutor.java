@@ -1861,13 +1861,17 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 waiters = waiters.getNext();
             }
             tail.setNext(TERMINATE_COMPLETE);
-            if (this.acc != null) {
-                final Object handle = this.handle;
-                if (handle != null) {
-                    intr = intr || Thread.interrupted();
-                    doPrivileged(new MBeanUnregisterAction(handle), acc);
+            if (!DISABLE_MBEAN) {
+                //The check for DISABLE_MBEAN is redundant as acc would be null,
+                //but GraalVM needs the hint so to not make JMX reachable.
+                if (this.acc != null) {
+                    final Object handle = this.handle;
+                    if (handle != null) {
+                        intr = intr || Thread.interrupted();
+                        doPrivileged(new MBeanUnregisterAction(handle), acc);
+                    }
+                    this.acc = null;
                 }
-                this.acc = null;
             }
         } finally {
             if (intr) {
