@@ -168,6 +168,7 @@
             </plugin>
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.0.0-M5</version>
                 <configuration>
                     <systemProperties>
                         <property>
@@ -192,7 +193,22 @@
                         </property>
                     </systemProperties>
                     <forkMode>always</forkMode>
+                    <useModulePath>false</useModulePath>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>io.github.dmlloyd.module-info</groupId>
+                <artifactId>module-info</artifactId>
+                <version>1.2</version>
+                <executions>
+                    <execution>
+                        <id>module-info</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
