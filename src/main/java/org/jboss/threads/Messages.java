@@ -1,5 +1,7 @@
 package org.jboss.threads;
 
+import static java.lang.invoke.MethodHandles.*;
+
 import java.time.Duration;
 
 import org.jboss.logging.BasicLogger;
@@ -14,8 +16,8 @@ import org.jboss.logging.annotations.MessageLogger;
  */
 @MessageLogger(projectCode = "JBTHR", length = 5)
 interface Messages extends BasicLogger {
-    Messages msg = Logger.getMessageLogger(Messages.class, "org.jboss.threads");
-    Messages intMsg = Logger.getMessageLogger(Messages.class, "org.jboss.threads.interrupt-handler");
+    Messages msg = Logger.getMessageLogger(lookup(), Messages.class, "org.jboss.threads");
+    Messages intMsg = Logger.getMessageLogger(lookup(), Messages.class, "org.jboss.threads.interrupt-handler");
 
     // version
     @Message(value = "JBoss Threads version %s")
