@@ -31,6 +31,9 @@ public final class Version {
     private Version() {
     }
 
+    // No specific prefix here, this controls the behavior of multiple JBoss libraries
+    private static final String JBOSS_LOG_VERSIONS = "jboss.log-versions";
+
     private static final String JAR_NAME;
     private static final String VERSION_STRING;
 
@@ -48,9 +51,17 @@ public final class Version {
         }
         JAR_NAME = jarName;
         VERSION_STRING = versionString;
+
+        boolean logVersion = true;
         try {
-            Messages.msg.version(versionString);
+            logVersion = !"false".equalsIgnoreCase(System.getProperty(JBOSS_LOG_VERSIONS));
         } catch (Throwable ignored) {}
+
+        if (logVersion) {
+            try {
+                Messages.msg.version(versionString);
+            } catch (Throwable ignored) {}
+        }
     }
 
     /**
