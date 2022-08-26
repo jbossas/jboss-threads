@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.security.AccessController;
+import java.security.PrivilegedAction;
 import java.util.Properties;
 
 /**
@@ -48,9 +50,18 @@ public final class Version {
         }
         JAR_NAME = jarName;
         VERSION_STRING = versionString;
-        try {
+        boolean logVersion = AccessController.doPrivileged((PrivilegedAction<Boolean>) Version::shouldLogVersion).booleanValue();
+        if (logVersion) try {
             Messages.msg.version(versionString);
         } catch (Throwable ignored) {}
+    }
+
+    private static Boolean shouldLogVersion() {
+        try {
+            return Boolean.valueOf(System.getProperty("jboss.log-version", "true"));
+        } catch (Throwable ignored) {
+            return Boolean.FALSE;
+        }
     }
 
     /**
