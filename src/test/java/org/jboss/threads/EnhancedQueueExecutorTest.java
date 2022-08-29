@@ -1,7 +1,7 @@
 package org.jboss.threads;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -10,9 +10,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import junit.framework.TestCase;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 public class EnhancedQueueExecutorTest {
     private int coreSize = 3;
@@ -50,7 +49,7 @@ public class EnhancedQueueExecutorTest {
      * </ul>
      */
     @Test
-    @Ignore("https://issues.jboss.org/browse/JBTHR-67")
+    @Disabled("https://issues.jboss.org/browse/JBTHR-67")
     public void testThreadReuse() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
@@ -61,13 +60,13 @@ public class EnhancedQueueExecutorTest {
         for (int i = 0; i < coreSize; i++) {
             executor.execute(new TestTask().withSleepTime(100));
         }
-        assertEquals("expected: == " + coreSize + ", actual: " + executor.getPoolSize(), executor.getPoolSize(), coreSize);
+        assertEquals(executor.getPoolSize(), coreSize, "expected: == " + coreSize + ", actual: " + executor.getPoolSize());
         waitForActiveCount(executor, 0, 1000);
-        assertEquals("expected: == " + coreSize + ", actual: " + executor.getPoolSize(), executor.getPoolSize(), coreSize);
+        assertEquals(executor.getPoolSize(), coreSize, "expected: == " + coreSize + ", actual: " + executor.getPoolSize());
         for (int i = 0; i < coreSize; i++) {
             executor.execute(new TestTask().withSleepTime(1000));
         }
-        assertEquals("expected: == " + coreSize + ", actual: " + executor.getPoolSize(), executor.getPoolSize(), coreSize);
+        assertEquals(executor.getPoolSize(), coreSize, "expected: == " + coreSize + ", actual: " + executor.getPoolSize());
         executor.shutdown();
     }
 
@@ -79,7 +78,7 @@ public class EnhancedQueueExecutorTest {
      * @throws TimeoutException
      */
     @Test
-    @Ignore("https://issues.jboss.org/browse/JBTHR-67")
+    @Disabled("https://issues.jboss.org/browse/JBTHR-67")
     public void testKeepaliveTime() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
@@ -87,11 +86,11 @@ public class EnhancedQueueExecutorTest {
                 .setMaximumPoolSize(maxSize)
                 .build();
 
-        assertTrue("expected: <=" + coreSize + ", actual: " + executor.getPoolSize(), executor.getPoolSize() <= coreSize);
+        assertTrue(executor.getPoolSize() <= coreSize, "expected: <=" + coreSize + ", actual: " + executor.getPoolSize());
         for (int i = 0; i < maxSize; i++) {
             executor.execute(new TestTask().withSleepTime(1000));
         }
-        assertEquals("expected: ==" + maxSize + ", actual: " + executor.getPoolSize(), executor.getPoolSize(), maxSize);
+        assertEquals(executor.getPoolSize(), maxSize, "expected: ==" + maxSize + ", actual: " + executor.getPoolSize());
         waitForActiveCount(executor, 0, 5000);
         waitForPoolSize(executor, coreSize, keepaliveTimeMillis * 2);
         executor.shutdown();
@@ -102,7 +101,7 @@ public class EnhancedQueueExecutorTest {
      * threads and core thread time out is disabled.
      */
     @Test
-    @Ignore("https://issues.jboss.org/browse/JBTHR-67")
+    @Disabled("https://issues.jboss.org/browse/JBTHR-67")
     public void testKeepaliveTime2() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
@@ -114,9 +113,9 @@ public class EnhancedQueueExecutorTest {
             executor.execute(new TestTask().withSleepTime(100));
         }
         int currentThreads = executor.getPoolSize();
-        assertEquals("expected: == " + coreSize + ", actual: " + currentThreads, currentThreads, coreSize);
+        assertEquals(currentThreads, coreSize, "expected: == " + coreSize + ", actual: " + currentThreads);
         waitForActiveCount(executor, 0, 5000);
-        assertEquals("expected: == " + currentThreads + ", actual: " + executor.getPoolSize(), executor.getPoolSize(), currentThreads);
+        assertEquals(executor.getPoolSize(), currentThreads, "expected: == " + currentThreads + ", actual: " + executor.getPoolSize());
         executor.shutdown();
     }
 
@@ -124,7 +123,7 @@ public class EnhancedQueueExecutorTest {
      * Test the keepalive setting with core thread time out enabled.
      */
     @Test
-    @Ignore("https://issues.jboss.org/browse/JBTHR-67")
+    @Disabled("https://issues.jboss.org/browse/JBTHR-67")
     public void testKeepaliveTime3() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
@@ -152,8 +151,8 @@ public class EnhancedQueueExecutorTest {
                 .setMaximumPoolSize(maxSize)
                 .build();
         int prestarted = executor.prestartAllCoreThreads();
-        assertEquals("expected: == " + coreSize + ", actual: " + prestarted, prestarted, coreSize);
-        assertEquals("expected: == " + coreSize + ", actual: " + executor.getPoolSize(), executor.getPoolSize(), coreSize);
+        assertEquals(prestarted, coreSize, "expected: == " + coreSize + ", actual: " + prestarted);
+        assertEquals(executor.getPoolSize(), coreSize, "expected: == " + coreSize + ", actual: " + executor.getPoolSize());
         executor.shutdown();
     }
 
@@ -203,7 +202,7 @@ public class EnhancedQueueExecutorTest {
             assertEquals(expectedStackFrames, queuedTaskStackFrames.get());
         } finally {
             executor.shutdown();
-            assertTrue("Executor failed to terminate", executor.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS), "Executor failed to terminate");
         }
     }
 

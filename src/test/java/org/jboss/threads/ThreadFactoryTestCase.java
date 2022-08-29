@@ -18,15 +18,20 @@
 
 package org.jboss.threads;
 
-import junit.framework.TestCase;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CountDownLatch;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 /**
  *
  */
-public final class ThreadFactoryTestCase extends TestCase {
+public final class ThreadFactoryTestCase {
     private static final NullRunnable NULL_RUNNABLE = new NullRunnable();
 
     private static class NullRunnable implements Runnable {
@@ -36,12 +41,14 @@ public final class ThreadFactoryTestCase extends TestCase {
 
     private static void doTestNamePattern(JBossThreadFactory threadFactory, int expectedPerFactoryId, int expectedGlobalId, int expectedFactoryId) {
         final String name = threadFactory.newThread(NULL_RUNNABLE).getName();
-        assertTrue("Wrong thread name (" + name + ") ", name.matches("-([a-z]+:)*one:two:three-%-" + expectedPerFactoryId + "-" + expectedGlobalId + "-" + expectedFactoryId + "-"));
+        assertTrue(name.matches("-([a-z]+:)*one:two:three-%-" + expectedPerFactoryId + "-" + expectedGlobalId + "-" + expectedFactoryId + "-"), "Wrong thread name (" + name + ") ");
     }
 
     /**
      * This MUST be the first test, otherwise the sequence numbers will be wrong.
      */
+    @Test
+    @Disabled("skip test for now since it depends on order")
     public void testNamePattern() {
         // TODO - skip test for now since it depends on order.
         if (true) return;
@@ -60,13 +67,15 @@ public final class ThreadFactoryTestCase extends TestCase {
         doTestNamePattern(threadFactory1, 4, 8, 1);
     }
 
+    @Test
     public void testDaemon() {
         final JBossThreadFactory threadFactory1 = new JBossThreadFactory(null, Boolean.TRUE, null, "%t", null, null);
-        assertTrue("Thread is not a daemon thread", threadFactory1.newThread(NULL_RUNNABLE).isDaemon());
+        assertTrue(threadFactory1.newThread(NULL_RUNNABLE).isDaemon(), "Thread is not a daemon thread");
         final JBossThreadFactory threadFactory2 = new JBossThreadFactory(null, Boolean.FALSE, null, "%t", null, null);
-        assertFalse("Thread should not be a daemon thread", threadFactory2.newThread(NULL_RUNNABLE).isDaemon());
+        assertFalse(threadFactory2.newThread(NULL_RUNNABLE).isDaemon(),"Thread should not be a daemon thread");
     }
 
+    @Test
     public void testInterruptHandler() throws InterruptedException {
         final AtomicBoolean wasInterrupted = new AtomicBoolean();
         final AtomicBoolean called = new AtomicBoolean();
@@ -94,10 +103,11 @@ public final class ThreadFactoryTestCase extends TestCase {
         latch.await();
         t.interrupt();
         t.join();
-        assertTrue("Was not interrupted", wasInterrupted.get());
-        assertTrue("Handler was not called", called.get());
+        assertTrue(wasInterrupted.get(), "Was not interrupted");
+        assertTrue(called.get(), "Handler was not called");
     }
 
+    @Test
     public void testUncaughtHandler() throws InterruptedException {
         final AtomicBoolean called = new AtomicBoolean();
         final JBossThreadFactory factory = new JBossThreadFactory(null, null, null, null, new Thread.UncaughtExceptionHandler() {
@@ -112,15 +122,16 @@ public final class ThreadFactoryTestCase extends TestCase {
         });
         t.start();
         t.join();
-        assertTrue("Handler was not called", called.get());
+        assertTrue(called.get(), "Handler was not called");
     }
 
+    @Test
     public void testInitialPriority() {
-        assertEquals("Wrong initial thread priority", 1, new JBossThreadFactory(null, null, Integer.valueOf(1), null, null, null).newThread(NULL_RUNNABLE).getPriority());
-        assertEquals("Wrong initial thread priority", 2, new JBossThreadFactory(null, null, Integer.valueOf(2), null, null, null).newThread(NULL_RUNNABLE).getPriority());
+        assertEquals(1, new JBossThreadFactory(null, null, Integer.valueOf(1), null, null, null).newThread(NULL_RUNNABLE).getPriority(), "Wrong initial thread priority");
+        assertEquals(2, new JBossThreadFactory(null, null, Integer.valueOf(2), null, null, null).newThread(NULL_RUNNABLE).getPriority(), "Wrong initial thread priority");
         final ThreadGroup grp = new ThreadGroup("blah");
         grp.setMaxPriority(5);
-        assertEquals("Wrong initial thread priority", 5, new JBossThreadFactory(grp, null, Integer.valueOf(10), null, null, null).newThread(NULL_RUNNABLE).getPriority());
-        assertEquals("Wrong initial thread priority", 1, new JBossThreadFactory(grp, null, Integer.valueOf(1), null, null, null).newThread(NULL_RUNNABLE).getPriority());
+        assertEquals(5, new JBossThreadFactory(grp, null, Integer.valueOf(10), null, null, null).newThread(NULL_RUNNABLE).getPriority(), "Wrong initial thread priority");
+        assertEquals(1, new JBossThreadFactory(grp, null, Integer.valueOf(1), null, null, null).newThread(NULL_RUNNABLE).getPriority(), "Wrong initial thread priority");
     }
 }

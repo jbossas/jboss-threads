@@ -18,13 +18,16 @@
 
 package org.jboss.threads;
 
+import org.assertj.core.api.Assertions;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import org.junit.Assert;
-import org.junit.Ignore;
-import org.junit.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for checking EnhancedTreadPoolExecutor
@@ -62,40 +65,45 @@ public class EnhancedThreadQueueExecutorTestCase {
      * * Negative keepAlive, coreSize, maxSize
      * * maxSize > coreSize
      */
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testInvalidValuesKeepAliveZero() {
-        new EnhancedQueueExecutor.Builder()
+        Assertions.assertThatExceptionOfType(IllegalArgumentException.class)
+                        .isThrownBy(() -> new EnhancedQueueExecutor.Builder()
                 .setKeepAliveTime(0, TimeUnit.MILLISECONDS)
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
-                .build();
+                .build());
+        ;
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testInvalidValuesKeepAliveNegative() {
-        new EnhancedQueueExecutor.Builder()
+        Assertions.assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new EnhancedQueueExecutor.Builder()
                 .setKeepAliveTime(-3456, TimeUnit.MILLISECONDS)
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
-                .build();
+                .build());
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testInvalidValuesCoreSizeNegative() {
-        new EnhancedQueueExecutor.Builder()
+        Assertions.assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new EnhancedQueueExecutor.Builder()
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
                 .setCorePoolSize(-5)
                 .setMaximumPoolSize(maxSize)
-                .build();
+                .build());
     }
 
-    @Test(expected = IllegalArgumentException.class)
+    @Test
     public void testInvalidValuesMaxSizeNegative() {
-        new EnhancedQueueExecutor.Builder()
+        Assertions.assertThatExceptionOfType(IllegalArgumentException.class)
+                .isThrownBy(() -> new EnhancedQueueExecutor.Builder()
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(-3)
-                .build();
+                .build());
     }
 
     @Test
@@ -106,7 +114,7 @@ public class EnhancedThreadQueueExecutorTestCase {
                 .setCorePoolSize(2 * expectedCorePoolSize)
                 .setMaximumPoolSize(expectedCorePoolSize)
                 .build();
-        Assert.assertEquals("Core size should be automatically adjusted to be equal to max size in case it's bigger.", expectedCorePoolSize, executor.getCorePoolSize());
+        assertEquals(expectedCorePoolSize, executor.getCorePoolSize(), "Core size should be automatically adjusted to be equal to max size in case it's bigger.");
     }
 
     /**
@@ -131,8 +139,8 @@ public class EnhancedThreadQueueExecutorTestCase {
         for (int i = 0; i < coreSize; i++) {
             executor.execute(new TestTask(exitLatch, allThreadsRunningLatch));
         }
-        Assert.assertTrue("Not all threads were running. They were most likely not scheduled for execution.",
-                allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS),
+                "Not all threads were running. They were most likely not scheduled for execution.");
         waitForPoolSize(executor, coreSize, defaultWaitTimeout);
         exitLatch.countDown();
         waitForActiveCount(executor, 0, defaultWaitTimeout);
@@ -142,8 +150,8 @@ public class EnhancedThreadQueueExecutorTestCase {
         for (int i = 0; i < coreSize; i++) {
             executor.execute(new TestTask(exitLatch, allThreadsRunningLatch));
         }
-        Assert.assertTrue("Not all threads were running. They were most likely not scheduled for execution.",
-                allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS),
+                "Not all threads were running. They were most likely not scheduled for execution.");
         exitLatch.countDown();
         waitForPoolSize(executor, coreSize, defaultWaitTimeout);
         executor.shutdown();
@@ -174,8 +182,8 @@ public class EnhancedThreadQueueExecutorTestCase {
         for (int i = 0; i < coreSize; i++) {
             executor.execute(new TestTask(exitLatch, allThreadsRunningLatch));
         }
-        Assert.assertTrue("Not all threads were running. They were most likely not scheduled for execution.",
-                allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS),
+                "Not all threads were running. They were most likely not scheduled for execution.");
         waitForPoolSize(executor, coreSize, defaultWaitTimeout);
 
         // submit one more task and allow it to finish
@@ -208,7 +216,7 @@ public class EnhancedThreadQueueExecutorTestCase {
      * @throws TimeoutException
      */
     @Test
-    @Ignore("This test consistently fails, see JBTHR-67")
+    @Disabled("This test consistently fails, see JBTHR-67")
     public void testKeepaliveTime() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
@@ -222,15 +230,15 @@ public class EnhancedThreadQueueExecutorTestCase {
         for (int i = 0; i < coreSize; i++) {
             executor.execute(new TestTask(exitLatch, allThreadsRunningLatch));
         }
-        Assert.assertTrue("Not all core threads are running. They were most likely not scheduled for execution.",
-                allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS),
+                "Not all threads were running. They were most likely not scheduled for execution.");
         CountDownLatch exitLatch2 = new CountDownLatch(1);
         CountDownLatch allThreadsRunningLatch2 = new CountDownLatch(maxSize - coreSize);
         for (int i = 0; i < (maxSize - coreSize); i++) {
             executor.execute(new TestTask(exitLatch2, allThreadsRunningLatch2));
         }
-        Assert.assertTrue("Not all above core threads were running. They were most likely not scheduled for execution.",
-                allThreadsRunningLatch2.await(defaultWaitTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS),
+                "Not all threads were running. They were most likely not scheduled for execution.");
         waitForPoolSize(executor, maxSize, defaultWaitTimeout);
 
         // finish core tasks and let timeout "core" threads
@@ -261,8 +269,8 @@ public class EnhancedThreadQueueExecutorTestCase {
         for (int i = 0; i < coreSize; i++) {
             executor.execute(new TestTask(exitLatch, allThreadsRunningLatch));
         }
-        Assert.assertTrue("Not all threads were running. They were most likely not scheduled for execution.",
-                allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS),
+                "Not all threads were running. They were most likely not scheduled for execution.");
         waitForPoolSize(executor, coreSize, defaultWaitTimeout);
         exitLatch.countDown();
         waitForActiveCount(executor, 0, defaultWaitTimeout);
@@ -289,8 +297,8 @@ public class EnhancedThreadQueueExecutorTestCase {
             executor.execute(new TestTask(exitLatch, allThreadsRunningLatch));
         }
         // this will make sure that all thread are running at the same time
-        Assert.assertTrue("Not all threads were running. They were most likely not scheduled for execution.",
-                allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS));
+        assertTrue(allThreadsRunningLatch.await(defaultWaitTimeout, TimeUnit.MILLISECONDS),
+                "Not all threads were running. They were most likely not scheduled for execution.");
         exitLatch.countDown();
         waitForActiveCount(executor, 0, defaultWaitTimeout);
         waitForPoolSize(executor, 0, defaultWaitTimeout);
@@ -308,8 +316,8 @@ public class EnhancedThreadQueueExecutorTestCase {
                 .setMaximumPoolSize(maxSize)
                 .build();
         int prestarted = executor.prestartAllCoreThreads();
-        Assert.assertEquals("expected: == " + coreSize + ", actual: " + prestarted, coreSize, prestarted);
-        Assert.assertEquals("expected: == " + coreSize + ", actual: " + executor.getPoolSize(), coreSize, executor.getPoolSize());
+        assertEquals(coreSize, prestarted, "expected: == " + coreSize + ", actual: " + prestarted);
+        assertEquals(coreSize, executor.getPoolSize(), "expected: == " + coreSize + ", actual: " + executor.getPoolSize());
         executor.shutdown();
     }
 
@@ -360,7 +368,7 @@ public class EnhancedThreadQueueExecutorTestCase {
                 .build();
 
         executor.shutdown();
-        Assert.assertTrue(terminateLatch.await(10, TimeUnit.SECONDS));
+        assertTrue(terminateLatch.await(10, TimeUnit.SECONDS));
     }
 
     @Test //JBTHR-50
@@ -390,6 +398,6 @@ public class EnhancedThreadQueueExecutorTestCase {
             });
         }
         executor.shutdown();
-        Assert.assertTrue(terminateLatch.await(10, TimeUnit.SECONDS));
+        assertTrue(terminateLatch.await(10, TimeUnit.SECONDS));
     }
 }

@@ -22,7 +22,7 @@
 
 package org.jboss.threads;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -40,7 +40,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.awaitility.Awaitility;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 public final class ViewExecutorTest {
 
@@ -123,7 +124,8 @@ public final class ViewExecutorTest {
     // however when they aren't collected properly they will cause a GC spiral for much longer
     // than ten seconds. Unfortunately this test is impacted by hardware changes and may flake
     // (or erroneously pass on fast enough hardware).
-    @Test(timeout = 10_000)
+    @Test
+    @Timeout(10_000)
     public void testViewExecutorMemoryOverhead() {
         Executor directExecutor = new Executor() {
             @Override
@@ -198,7 +200,8 @@ public final class ViewExecutorTest {
         }
     }
 
-    @Test(timeout = 5_000)
+    @Test
+    @Timeout(5_000)
     public void testDelegateQueueProcessingRejectionTaskIsInterrupted() throws InterruptedException {
         // Subsequent queued tasks run by the same wrapper should support interruption
         CountDownLatch firstTaskLatch = new CountDownLatch(1);

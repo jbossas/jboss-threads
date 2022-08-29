@@ -1,6 +1,6 @@
 package org.jboss.threads;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
@@ -10,7 +10,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 public class ScheduledEnhancedQueueExecutorTest {
 
@@ -25,7 +25,7 @@ public class ScheduledEnhancedQueueExecutorTest {
             assertTrue(future.cancel(false));
             assertTrue(future.isCancelled());
             eqe.shutdown();
-            assertTrue("Timely shutdown", eqe.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(eqe.awaitTermination(5, TimeUnit.SECONDS), "Timely shutdown");
         } finally {
             eqe.shutdownNow();
         }
@@ -37,7 +37,7 @@ public class ScheduledEnhancedQueueExecutorTest {
         try {
             CountDownLatch latch = new CountDownLatch(1);
             ScheduledFuture<Boolean> future = eqe.schedule(() -> { latch.countDown(); Thread.sleep(1_000_000_000L); return Boolean.TRUE; }, 1, TimeUnit.NANOSECONDS);
-            assertTrue("Timely task execution", latch.await(5, TimeUnit.SECONDS));
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Timely task execution");
             assertFalse(future.isCancelled());
             // task is running; cancel will fail
             assertFalse(future.cancel(false));
@@ -52,11 +52,11 @@ public class ScheduledEnhancedQueueExecutorTest {
                 fail("Expected exception");
             } catch (ExecutionException ee) {
                 Throwable cause = ee.getCause();
-                assertTrue("Expected " + cause + " to be an InterruptedException", cause instanceof InterruptedException);
+                assertTrue(cause instanceof InterruptedException, "Expected " + cause + " to be an InterruptedException");
             }
             assertTrue(future.isDone());
             eqe.shutdown();
-            assertTrue("Timely shutdown", eqe.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(eqe.awaitTermination(5, TimeUnit.SECONDS), "Timely shutdown");
         } finally {
             eqe.shutdownNow();
         }
@@ -72,7 +72,7 @@ public class ScheduledEnhancedQueueExecutorTest {
             Boolean result = future.get();
             long execTime = System.nanoTime() - start;
             long expected = 1_000_000L;
-            assertTrue("Execution too short (expected at least " + expected + ", got " + execTime + ")", execTime >= expected);
+            assertTrue(execTime >= expected, "Execution too short (expected at least " + expected + ", got " + execTime + ")");
             assertNotNull(result);
             assertTrue(result.booleanValue());
             start = System.nanoTime();
@@ -80,11 +80,11 @@ public class ScheduledEnhancedQueueExecutorTest {
             result = future.get();
             execTime = System.nanoTime() - start;
             expected = 500_000_000L;
-            assertTrue("Execution too short (expected at least " + expected + ", got " + execTime + ")", execTime >= expected);
+            assertTrue(execTime >= expected, "Execution too short (expected at least " + expected + ", got " + execTime + ")");
             assertNotNull(result);
             assertTrue(result.booleanValue());
             eqe.shutdown();
-            assertTrue("Timely shutdown", eqe.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(eqe.awaitTermination(5, TimeUnit.SECONDS), "Timely shutdown");
         } finally {
             eqe.shutdownNow();
         }
@@ -101,7 +101,7 @@ public class ScheduledEnhancedQueueExecutorTest {
                     completeLatch.countDown();
                 }
             }, 20, 50, TimeUnit.MILLISECONDS);
-            assertTrue("Completion of enough iterations", completeLatch.await(1, TimeUnit.SECONDS));
+            assertTrue(completeLatch.await(1, TimeUnit.SECONDS), "Completion of enough iterations");
             assertFalse(future.isDone()); // they're never done
             // don't assert, because there's a small chance it would happen to be running
             future.cancel(false);
@@ -112,7 +112,7 @@ public class ScheduledEnhancedQueueExecutorTest {
                 // expected
             }
             eqe.shutdown();
-            assertTrue("Timely shutdown", eqe.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(eqe.awaitTermination(5, TimeUnit.SECONDS), "Timely shutdown");
         } finally {
             eqe.shutdownNow();
         }
@@ -129,7 +129,7 @@ public class ScheduledEnhancedQueueExecutorTest {
                     completeLatch.countDown();
                 }
             }, 20, 50, TimeUnit.MILLISECONDS);
-            assertTrue("Completion of enough iterations", completeLatch.await(1, TimeUnit.SECONDS));
+            assertTrue(completeLatch.await(1, TimeUnit.SECONDS), "Completion of enough iterations");
             assertFalse(future.isDone()); // they're never done
             // don't assert, because there's a small chance it would happen to be running
             future.cancel(false);
@@ -140,7 +140,7 @@ public class ScheduledEnhancedQueueExecutorTest {
                 // expected
             }
             eqe.shutdown();
-            assertTrue("Timely shutdown", eqe.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(eqe.awaitTermination(5, TimeUnit.SECONDS), "Timely shutdown");
         } finally {
             eqe.shutdownNow();
         }
@@ -152,14 +152,14 @@ public class ScheduledEnhancedQueueExecutorTest {
         try {
             ScheduledFuture<?> future = eqe.schedule(() -> fail("Should never run"), 1, TimeUnit.DAYS);
             eqe.shutdown();
-            assertTrue("Timely shutdown", eqe.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(eqe.awaitTermination(5, TimeUnit.SECONDS), "Timely shutdown");
             try {
                 future.get(1, TimeUnit.SECONDS);
                 fail("Expected cancellation exception");
             } catch (CancellationException e) {
                 // expected
             }
-            assertTrue("Was cancelled on shutdown", future.isCancelled());
+            assertTrue(future.isCancelled(), "Was cancelled on shutdown");
         } finally {
             eqe.shutdownNow();
         }
