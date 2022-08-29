@@ -22,13 +22,16 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 
-import junit.framework.TestCase;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
-public class DeferredInterruptTestCase extends TestCase {
+public class DeferredInterruptTestCase {
 
+    @Test
     public void testDeferral() throws Exception {
         final AtomicBoolean delivered0 = new AtomicBoolean();
         final AtomicBoolean deferred = new AtomicBoolean();

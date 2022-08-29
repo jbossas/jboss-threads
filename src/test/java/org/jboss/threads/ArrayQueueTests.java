@@ -1,12 +1,16 @@
 package org.jboss.threads;
 
-import static org.junit.Assert.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.TimeUnit;
 
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 
 public class ArrayQueueTests {
 
@@ -14,7 +18,7 @@ public class ArrayQueueTests {
 
     static EnhancedQueueExecutor.AbstractScheduledFuture<?>[] ITEMS;
 
-    @BeforeClass
+    @BeforeAll
     public static void beforeAll() {
         eqe = new EnhancedQueueExecutor.Builder().build();
         ITEMS = new EnhancedQueueExecutor.AbstractScheduledFuture[32];
@@ -235,7 +239,7 @@ public class ArrayQueueTests {
         assertNull(aq.testPoint_getArrayItem(3));
     }
 
-    @AfterClass
+    @AfterAll
     public static void afterAll() throws InterruptedException {
         try {
             eqe.shutdown();

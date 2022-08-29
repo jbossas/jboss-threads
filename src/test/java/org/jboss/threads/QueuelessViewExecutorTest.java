@@ -19,11 +19,10 @@
 package org.jboss.threads;
 
 import org.awaitility.Awaitility;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
-import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -36,7 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@RunWith(Parameterized.class)
+
 public class QueuelessViewExecutorTest {
 
     private static final String THREAD_BASE_NAME = "CachedExecutorViewTest-";
@@ -68,19 +67,9 @@ public class QueuelessViewExecutorTest {
         abstract ExecutorService wrap(Executor delegate);
     }
 
-    @Parameterized.Parameters(name = "{index}: {0}")
-    public static Iterable<Object[]> data() {
-        return Arrays.asList(new Object[][]{{ExecutorType.QUEUELESS_VIEW}, {ExecutorType.QUEUED}});
-    }
-
-    private final ExecutorType executorType;
-
-    public QueuelessViewExecutorTest(ExecutorType executorType) {
-        this.executorType = executorType;
-    }
-
-    @Test
-    public void testShutdownNow() throws InterruptedException {
+    @ParameterizedTest
+    @EnumSource(QueuelessViewExecutorTest.ExecutorType.class)
+    public void testShutdownNow(ExecutorType executorType) throws InterruptedException {
         AtomicBoolean interrupted = new AtomicBoolean();
         ExecutorService cached = cachedExecutor();
         ExecutorService view = executorType.wrap(cached);
@@ -119,8 +108,9 @@ public class QueuelessViewExecutorTest {
         assertCleanShutdown(cached);
     }
 
-    @Test
-    public void testShutdownNow_immediatelyAfterTaskIsSubmitted() throws InterruptedException {
+    @ParameterizedTest
+    @EnumSource(QueuelessViewExecutorTest.ExecutorType.class)
+    public void testShutdownNow_immediatelyAfterTaskIsSubmitted(ExecutorType executorType) throws InterruptedException {
         AtomicBoolean interrupted = new AtomicBoolean();
         ExecutorService cached = cachedExecutor();
         ExecutorService view = executorType.wrap(runnable -> {
@@ -152,8 +142,10 @@ public class QueuelessViewExecutorTest {
         assertCleanShutdown(cached);
     }
 
-    @Test(timeout = 5_000) // Failing awaitTermination should return quickly
-    public void testAwaitTermination() throws InterruptedException {
+    @Timeout(5_000) // Failing awaitTermination should return quickly
+    @ParameterizedTest
+    @EnumSource(QueuelessViewExecutorTest.ExecutorType.class)
+    public void testAwaitTermination(ExecutorType executorType) throws InterruptedException {
         AtomicBoolean interrupted = new AtomicBoolean();
         ExecutorService cached = cachedExecutor();
         ExecutorService view = executorType.wrap(cached);
@@ -184,8 +176,9 @@ public class QueuelessViewExecutorTest {
         assertCleanShutdown(cached);
     }
 
-    @Test
-    public void testShutdown() throws InterruptedException {
+    @ParameterizedTest
+    @EnumSource(QueuelessViewExecutorTest.ExecutorType.class)
+    public void testShutdown(ExecutorType executorType) throws InterruptedException {
         AtomicBoolean interrupted = new AtomicBoolean();
         ExecutorService cached = cachedExecutor();
         ExecutorService view = executorType.wrap(cached);
