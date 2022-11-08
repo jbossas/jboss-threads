@@ -1,0 +1,13 @@
+# JBoss Threads
+
+jboss-threads is a library to manage and execute Java threads.
+
+## Legal
+
+All original contributions to JBoss Threads are licensed under the ASL - Apache License, version 2.0 or later, or, if another license is specified as governing the file or directory being modified, such other license.
+
+## Reporting an issue
+
+This project uses GitHub issues to manage the issues. Open an issue directly in GitHub.
+
+If you believe you found a bug, and it's likely possible, please indicate a way to reproduce it, what you are seeing and what you would expect to see. Don't forget to indicate your Java version.
