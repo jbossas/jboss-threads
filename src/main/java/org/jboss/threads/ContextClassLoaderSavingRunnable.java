@@ -17,9 +17,7 @@ class ContextClassLoaderSavingRunnable implements Runnable {
         try {
             delegate.run();
         } finally {
-            if (old != newCl) {
-                JBossExecutors.setContextClassLoader(currentThread, old);
-            }
+            JBossExecutors.setContextClassLoader(currentThread, old);
         }
     }
 

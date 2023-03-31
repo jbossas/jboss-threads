@@ -355,7 +355,9 @@ public final class JBossExecutors {
      * @param classLoader the new context class loader
      */
     static void setContextClassLoader(final Thread thread, final ClassLoader classLoader) {
-        unsafe.putObject(thread, contextClassLoaderOffs, classLoader);
+        if (unsafe.getObject(thread, contextClassLoaderOffs) != classLoader) {
+            unsafe.putObject(thread, contextClassLoaderOffs, classLoader);
+        }
     }
 
     /**
