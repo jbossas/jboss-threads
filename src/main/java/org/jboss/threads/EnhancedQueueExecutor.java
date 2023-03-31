@@ -2490,7 +2490,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             }
             if (UPDATE_ACTIVE_COUNT) incrementActiveCount();
             final Thread currentThread = Thread.currentThread();
-            final ClassLoader old = JBossExecutors.getAndSetContextClassLoader(currentThread, contextClassLoader);
+            final ClassLoader ctxCL = contextClassLoader;
+            final ClassLoader old = JBossExecutors.getAndSetContextClassLoader(currentThread, ctxCL);
             try {
                 ((ContextHandler)contextHandler).runWith(delegate, context);
             } catch (Throwable t) {
@@ -2500,7 +2501,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     // nothing else we can safely do here
                 }
             } finally {
-                JBossExecutors.setContextClassLoader(currentThread, old);
+                if (old != ctxCL) {
+                    JBossExecutors.setContextClassLoader(currentThread, old);
+                }
             }
             Thread.interrupted();
             if (UPDATE_ACTIVE_COUNT) {

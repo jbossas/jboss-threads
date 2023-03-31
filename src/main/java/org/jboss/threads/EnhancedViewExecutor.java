@@ -500,7 +500,9 @@ final class EnhancedViewExecutor extends ViewExecutor {
                     try {
                         runnable.run();
                     } finally {
-                        JBossExecutors.setContextClassLoader(currentThread, old);
+                        if (loader != old) {
+                            JBossExecutors.setContextClassLoader(currentThread, old);
+                        }
                     }
                 } catch (Throwable t) {
                     // The uncaught exception handler should be called on the current thread in order to log
