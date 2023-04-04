@@ -336,11 +336,12 @@ public final class JBossExecutors {
      * @return the old context class loader
      */
     static ClassLoader getAndSetContextClassLoader(final Thread thread, final ClassLoader newClassLoader) {
-        try {
-            return getContextClassLoader(thread);
-        } finally {
-            setContextClassLoader(thread, newClassLoader);
+        final ClassLoader currentClassLoader = (ClassLoader) unsafe.getObject(thread, contextClassLoaderOffs);
+        if (currentClassLoader != newClassLoader) {
+            // not using setContextClassLoader to save loading the current one again
+            unsafe.putObject(thread, contextClassLoaderOffs, newClassLoader);
         }
+        return currentClassLoader;
     }
 
     /**
@@ -350,7 +351,9 @@ public final class JBossExecutors {
      * @param classLoader the new context class loader
      */
     static void setContextClassLoader(final Thread thread, final ClassLoader classLoader) {
-        unsafe.putObject(thread, contextClassLoaderOffs, classLoader);
+        if (unsafe.getObject(thread, contextClassLoaderOffs) != classLoader) {
+            unsafe.putObject(thread, contextClassLoaderOffs, classLoader);
+        }
     }
 
     /**
