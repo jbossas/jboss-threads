@@ -24,7 +24,12 @@ public class DeferredInterruptTestCase {
             public void run() {
                 Thread.interrupted();
                 latch1.countDown();
+                // now wait
                 LockSupport.parkNanos(3000000000L);
+                if (! Thread.currentThread().isInterrupted()) {
+                    // spurious unpark, perhaps
+                    LockSupport.parkNanos(3000000000L);
+                }
                 delivered0.set(Thread.interrupted());
                 JBossThread.executeWithInterruptDeferred(new Runnable() {
                     public void run() {
