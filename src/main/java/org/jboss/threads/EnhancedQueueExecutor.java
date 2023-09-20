@@ -2608,6 +2608,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     case ASF_ST_WAITING:
                     case ASF_ST_SUBMITTED: {
                         this.state = ASF_ST_CANCELLED;
+                        notifyAll();
                         return true;
                     }
                     case ASF_ST_RUNNING: {
