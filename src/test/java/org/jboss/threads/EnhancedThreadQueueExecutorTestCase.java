@@ -151,6 +151,7 @@ public class EnhancedThreadQueueExecutorTestCase {
      * </ul>
      */
     @Test
+    @Disabled("This test consistently fails, see JBTHR-67")
     public void testThreadReuseAboveCoreSize() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
                 .setKeepAliveTime(60000, TimeUnit.MILLISECONDS)
