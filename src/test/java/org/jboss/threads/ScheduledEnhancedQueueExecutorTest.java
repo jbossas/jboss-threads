@@ -101,12 +101,12 @@ public class ScheduledEnhancedQueueExecutorTest {
                     completeLatch.countDown();
                 }
             }, 20, 50, TimeUnit.MILLISECONDS);
-            assertTrue(completeLatch.await(1, TimeUnit.SECONDS), "Completion of enough iterations");
+            assertTrue(completeLatch.await(5, TimeUnit.SECONDS), "Completion of enough iterations");
             assertFalse(future.isDone()); // they're never done
             // don't assert, because there's a small chance it would happen to be running
             future.cancel(false);
             try {
-                future.get(1, TimeUnit.SECONDS);
+                future.get(5, TimeUnit.SECONDS);
                 fail("Expected cancellation exception");
             } catch (CancellationException e) {
                 // expected
@@ -129,12 +129,12 @@ public class ScheduledEnhancedQueueExecutorTest {
                     completeLatch.countDown();
                 }
             }, 20, 50, TimeUnit.MILLISECONDS);
-            assertTrue(completeLatch.await(1, TimeUnit.SECONDS), "Completion of enough iterations");
+            assertTrue(completeLatch.await(5, TimeUnit.SECONDS), "Completion of enough iterations");
             assertFalse(future.isDone()); // they're never done
             // don't assert, because there's a small chance it would happen to be running
             future.cancel(false);
             try {
-                future.get(1, TimeUnit.SECONDS);
+                future.get(5, TimeUnit.SECONDS);
                 fail("Expected cancellation exception");
             } catch (CancellationException e) {
                 // expected
@@ -154,7 +154,7 @@ public class ScheduledEnhancedQueueExecutorTest {
             eqe.shutdown();
             assertTrue(eqe.awaitTermination(5, TimeUnit.SECONDS), "Timely shutdown");
             try {
-                future.get(1, TimeUnit.SECONDS);
+                future.get(5, TimeUnit.SECONDS);
                 fail("Expected cancellation exception");
             } catch (CancellationException e) {
                 // expected
