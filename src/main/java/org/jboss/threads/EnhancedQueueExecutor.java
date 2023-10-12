@@ -41,6 +41,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
@@ -277,6 +278,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * The termination task to execute when the thread pool exits.
      */
     volatile Runnable terminationTask;
+
+    /**
+     * If the thread pool has reached its max and generated a thread dump.
+     */
+    private AtomicBoolean reachedMax = new AtomicBoolean();
 
     // =======================================================
     // Statistics fields and counters
@@ -1514,6 +1520,9 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             oldSize = currentSizeOf(oldStat);
             if (oldSize >= maxSizeOf(oldStat)) {
                 // max threads already reached
+                if (reachedMax.compareAndSet(false, true)) {
+                    ThreadDumpUtil.threadDump(maxSizeOf(oldStat));
+                }
                 return AT_NO;
             }
             if (oldSize >= coreSizeOf(oldStat) && oldSize > 0) {

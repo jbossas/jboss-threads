@@ -97,6 +97,25 @@ interface Messages extends BasicLogger {
     @LogMessage(level = Logger.Level.ERROR)
     void taskSubmitFailed(@Cause RejectedExecutionException e, Runnable task);
 
+    @Message(id = 15, value = "Thread pool has reached %d max threads in use. Performance may be impacted. Thread dump:\n"+
+            "*******************************************************************************\n" +
+            "%s\n===============================================================================\n" +
+            "End Thread dump\n*******************************************************************************\n")
+    @LogMessage(level = Logger.Level.WARN)
+    void exhaustedPoolDump(int maxPoolSize, String dump);
+
+    @LogMessage(level = Logger.Level.WARN)
+    @Message(id = 16, value = "Deadlock detected!\n"+
+            "*******************************************************************************\n" +
+            "{0}\n===============================================================================\n" +
+            "End Deadlock\n*******************************************************************************\n",
+            format = Message.Format.MESSAGE_FORMAT)
+    void deadLock(String dump);
+
+    @Message(id = 17, value = "Exception thrown during generation of thread dump")
+    @LogMessage(level = Logger.Level.WARN)
+    void threadDumpException(@Cause Exception cause);
+
     // validation
 
     @Message(id = 100, value = "Keep-alive may only be set to 0 for this executor type")
