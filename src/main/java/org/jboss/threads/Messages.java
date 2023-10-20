@@ -97,6 +97,14 @@ interface Messages extends BasicLogger {
     @LogMessage(level = Logger.Level.ERROR)
     void taskSubmitFailed(@Cause RejectedExecutionException e, Runnable task);
 
+    @Message(id = 15, value = "%s")
+    @LogMessage(level = Logger.Level.WARN)
+    void exhaustedPoolMessage(String msg);
+
+    @Message(id = 16, value = "Exception thrown during generation of thread dump")
+    @LogMessage(level = Logger.Level.WARN)
+    void threadDumpException(@Cause Exception cause);
+
     // validation
 
     @Message(id = 100, value = "Keep-alive may only be set to 0 for this executor type")

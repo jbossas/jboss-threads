@@ -41,6 +41,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
@@ -278,6 +279,21 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      */
     volatile Runnable terminationTask;
 
+    /**
+     * If the thread pool has reached its max and generated a thread dump.
+     */
+    private AtomicBoolean reachedMax = new AtomicBoolean();
+
+    /**
+     * If a WARN is allowed upon thread exhaustion.
+     */
+    private boolean allowExhaustionWarn;
+
+    /**
+     * If a dump is allowed upon thread exhaustion.
+     */
+    private boolean allowExhaustionDump;
+
     // =======================================================
     // Statistics fields and counters
     // =======================================================
@@ -379,6 +395,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         head = tail = new TaskNode(null);
         // thread stat
         threadStatus = withCoreSize(withMaxSize(withAllowCoreTimeout(0L, builder.allowsCoreThreadTimeOut()), maxSize), coreSize);
+        withAllowExhaustionWarn(builder.allowsExhaustionWarn());
+        withAllowExhaustionDump(builder.allowsExhaustionDump());
         timeoutNanos = max(1L, keepAliveTime);
         queueSize = withMaxQueueSize(withCurrentQueueSize(0L, 0), builder.getMaximumQueueSize());
         mxBean = new MXBeanImpl();
@@ -421,6 +439,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         private TimeUnit keepAliveUnits = TimeUnit.SECONDS;
         private float growthResistance;
         private boolean allowCoreTimeOut;
+        private boolean allowExhaustionWarn;
+        private boolean allowExhaustionDump;
         private int maxQueueSize = Integer.MAX_VALUE;
         private boolean registerMBean = REGISTER_MBEAN;
         private String mBeanName;
@@ -604,6 +624,50 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
          */
         public Builder allowCoreThreadTimeOut(final boolean allowCoreTimeOut) {
             this.allowCoreTimeOut = allowCoreTimeOut;
+            return this;
+        }
+
+        /**
+         * Determine whether a WARN logged upon thread exhaustion is allowed.
+         *
+         * @return {@code true} if a WARN upon thread exhaustion is allowed, {@code false} otherwise
+         * @see EnhancedQueueExecutor#allowsExhaustionWarn()
+         */
+        public boolean allowsExhaustionWarn() {
+            return allowExhaustionWarn;
+        }
+
+        /**
+         * Establish whether a WARN logged upon thread exhaustion is allowed.
+         *
+         * @param allowExhaustionWarn {@code true} if a WARN upon thread exhaustion is allowed, {@code false} otherwise
+         * @return this builder
+         * @see EnhancedQueueExecutor#allowExhaustionWarn(boolean)
+         */
+        public Builder allowExhaustionWarn(final boolean allowExhaustionWarn) {
+            this.allowExhaustionWarn = allowExhaustionWarn;
+            return this;
+        }
+
+        /**
+         * Determine whether a thread dump logged upon thread exhaustion is allowed.
+         *
+         * @return {@code true} if a thread dump upon thread exhaustion is allowed, {@code false} otherwise
+         * @see EnhancedQueueExecutor#allowsExhaustionDump()
+         */
+        public boolean allowsExhaustionDump() {
+            return allowExhaustionDump;
+        }
+
+        /**
+         * Establish whether a thread dump logged upon thread exhaustion is allowed.
+         *
+         * @param allowExhaustionDump {@code true} if a thread dump upon thread exhaustion is allowed, {@code false} otherwise
+         * @return this builder
+         * @see EnhancedQueueExecutor#allowExhaustionDump(boolean)
+         */
+        public Builder allowExhaustionDump(final boolean allowExhaustionDump) {
+            this.allowExhaustionDump = allowExhaustionDump;
             return this;
         }
 
@@ -1514,6 +1578,9 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             oldSize = currentSizeOf(oldStat);
             if (oldSize >= maxSizeOf(oldStat)) {
                 // max threads already reached
+                if (reachedMax.compareAndSet(false, true) && isAllowExhaustionWarn()) {
+                    ThreadDumpUtil.handleExhaustion(maxSizeOf(oldStat), isAllowExhaustionDump());
+                }
                 return AT_NO;
             }
             if (oldSize >= coreSizeOf(oldStat) && oldSize > 0) {
@@ -1935,6 +2002,14 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         return status | TS_SHUTDOWN_INTERRUPT;
     }
 
+    private boolean withAllowExhaustionWarn(final boolean allowed) {
+        return allowExhaustionWarn = allowed;
+    }
+
+    private boolean withAllowExhaustionDump(final boolean allowed) {
+        return allowExhaustionDump = allowed;
+    }
+
     static long withAllowCoreTimeout(final long status, final boolean allowed) {
         return allowed ? status | TS_ALLOW_CORE_TIMEOUT : status & ~TS_ALLOW_CORE_TIMEOUT;
     }
@@ -1953,6 +2028,14 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     static boolean isAllowCoreTimeout(final long oldVal) {
         return (oldVal & TS_ALLOW_CORE_TIMEOUT) != 0;
+    }
+
+    private boolean isAllowExhaustionWarn() {
+        return allowExhaustionWarn;
+    }
+
+    private boolean isAllowExhaustionDump() {
+        return allowExhaustionDump;
     }
 
     // =======================================================
