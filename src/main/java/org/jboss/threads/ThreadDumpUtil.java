@@ -26,36 +26,40 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MonitorInfo;
 import java.lang.management.ThreadInfo;
 import java.lang.management.ThreadMXBean;
+import java.lang.StringBuilder;
 
 final class ThreadDumpUtil {
 
-   public static void threadDump(int maxPoolSize) {
-
-      try (
-         StringWriter dumpstr = new StringWriter();
-         PrintWriter dumpout = new PrintWriter(dumpstr);
-         StringWriter deadlockstr = new StringWriter();
-         PrintWriter deadlockout = new PrintWriter(deadlockstr);
-      ) {
-
-         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
-
-         for (ThreadInfo threadInfo : threadMXBean.dumpAllThreads(true, true)) {
-            dumpout.println(threadInfoToString(threadInfo));
+   public static void handleExhaustion(int maxPoolSize, boolean allowDump) {
+         StringBuilder msg = new StringBuilder();
+         msg.append(String.format("Thread pool has reached %d max threads in use. Performance may be impacted.", maxPoolSize));
+         if (allowDump) {
+             threadDump(msg);
          }
+         Messages.msg.exhaustedPoolMessage(msg.toString());
+   }
 
-         Messages.msg.exhaustedPoolDump(maxPoolSize, dumpstr.toString());
+   public static void threadDump(StringBuilder sb) {
+      try {
+         sb.append(" Thread dump:\n" +
+             "*******************************************************************************\n");
+         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+         for (ThreadInfo threadInfo : threadMXBean.dumpAllThreads(true, true)) {
+            sb.append(threadInfoToString(threadInfo));
+         }
+         sb.append("\n===============================================================================\n" +
+            "End Thread dump\n*******************************************************************************\n");
 
          long[] deadlockedThreads = threadMXBean.findDeadlockedThreads();
-
          if (deadlockedThreads != null && deadlockedThreads.length > 0) {
+             sb.append("Deadlock detected!\n"+
+                "*******************************************************************************\n" +
+                "{0}\n===============================================================================\n" +
+                "End Deadlock\n*******************************************************************************\n");
             for (ThreadInfo threadInfo : threadMXBean.getThreadInfo(deadlockedThreads, true, true)) {
-               deadlockout.println(threadInfoToString(threadInfo));
+               sb.append(threadInfoToString(threadInfo));
             }
-
-            Messages.msg.deadLock(deadlockstr.toString());
          }
-
       } catch (Exception e) {
          Messages.msg.threadDumpException(e);
       }
