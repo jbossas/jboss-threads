@@ -51,7 +51,7 @@
 
     <scm>
         <url>https://github.com/jbossas/jboss-threads</url>
-        <connection>https://github.com/jbossas/jboss-threads.git</connection>
+        <connection>scm:git:git@github.com:jbossas/jboss-threads.git</connection>
         <developerConnection>scm:git:git@github.com:jbossas/jboss-threads.git</developerConnection>
         <tag>HEAD</tag>
     </scm>
@@ -148,19 +148,19 @@
         </resources>
         <plugins>
             <plugin>
-                <artifactId>maven-javadoc-plugin</artifactId>
+                <artifactId>maven-resources-plugin</artifactId>
                 <configuration>
-                    <additionalDependencies>
-                        <additionalDependency>
-                            <groupId>org.jboss</groupId>
-                            <artifactId>jdk-misc</artifactId>
-                            <version>2.Final</version>
-                        </additionalDependency>
-                    </additionalDependencies>
+                    <propertiesEncoding>UTF-8</propertiesEncoding>
                 </configuration>
             </plugin>
             <plugin>
+                <artifactId>maven-javadoc-plugin</artifactId>
+            </plugin>
+            <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <proc>full</proc>
+                </configuration>
             </plugin>
             <plugin>
                 <artifactId>maven-source-plugin</artifactId>
@@ -168,29 +168,13 @@
             <plugin>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <systemProperties>
-                        <property>
-                            <name>test.level</name>
-                            <value>${test.level}</value>
-                        </property>
-                        <property>
-                            <name>java.util.logging.manager</name>
-                            <value>org.jboss.logmanager.LogManager</value>
-                        </property>
-                        <property>
-                            <name>jboss.threads.eqe.statistics</name>
-                            <value>${jboss.threads.eqe.statistics}</value>
-                        </property>
-                        <property>
-                            <name>jboss.threads.eqe.unlimited-queue</name>
-                            <value>${jboss.threads.eqe.unlimited-queue}</value>
-                        </property>
-                        <property>
-                            <name>jboss.threads.eqe.register-mbean</name>
-                            <value>${jboss.threads.eqe.register-mbean}</value>
-                        </property>
-                    </systemProperties>
-                    <forkMode>always</forkMode>
+                    <systemPropertyVariables>
+                        <test.level>${test.level}</test.level>
+                        <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
+                        <jboss.threads.eqe.statistics>${jboss.threads.eqe.statistics}</jboss.threads.eqe.statistics>
+                        <jboss.threads.eqe.unlimited-queue>${jboss.threads.eqe.unlimited-queue}</jboss.threads.eqe.unlimited-queue>
+                        <jboss.threads.eqe.register-mbean>${jboss.threads.eqe.register-mbean}</jboss.threads.eqe.register-mbean>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
         </plugins>
