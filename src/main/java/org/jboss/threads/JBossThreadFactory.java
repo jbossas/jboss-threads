@@ -58,6 +58,7 @@ public final class JBossThreadFactory implements ThreadFactory {
     /**
      * @deprecated Use {@link #JBossThreadFactory(ThreadGroup, Boolean, Integer, String, Thread.UncaughtExceptionHandler, Long)} instead.
      */
+    @Deprecated
     public JBossThreadFactory(ThreadGroup threadGroup, final Boolean daemon, final Integer initialPriority, String namePattern, final Thread.UncaughtExceptionHandler uncaughtExceptionHandler, final Long stackSize, final AccessControlContext ignored) {
         this(threadGroup, daemon, initialPriority, namePattern, uncaughtExceptionHandler, stackSize);
     }

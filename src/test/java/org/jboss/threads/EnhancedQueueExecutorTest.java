@@ -3,6 +3,7 @@ package org.jboss.threads;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -52,7 +53,7 @@ public class EnhancedQueueExecutorTest {
     @Disabled("https://issues.jboss.org/browse/JBTHR-67")
     public void testThreadReuse() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
                 .build();
@@ -81,7 +82,7 @@ public class EnhancedQueueExecutorTest {
     @Disabled("https://issues.jboss.org/browse/JBTHR-67")
     public void testKeepaliveTime() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
                 .build();
@@ -104,7 +105,7 @@ public class EnhancedQueueExecutorTest {
     @Disabled("https://issues.jboss.org/browse/JBTHR-67")
     public void testKeepaliveTime2() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(coreSize)
                 .build();
@@ -126,7 +127,7 @@ public class EnhancedQueueExecutorTest {
     @Disabled("https://issues.jboss.org/browse/JBTHR-67")
     public void testKeepaliveTime3() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .allowCoreThreadTimeOut(true)
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
@@ -146,7 +147,7 @@ public class EnhancedQueueExecutorTest {
     @Test
     public void testPrestartCoreThreads() {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
                 .build();
@@ -165,7 +166,7 @@ public class EnhancedQueueExecutorTest {
         assertStackDepth(new EnhancedQueueExecutor.Builder()
                 .setCorePoolSize(1)
                 .setMaximumPoolSize(1)
-                .build(), expectedStackFrames + 1);
+                .build(), expectedStackFrames + 2);
         // Use a standard ThreadPoolExecutor as a baseline for comparison.
         assertStackDepth(Executors.newSingleThreadExecutor(), expectedStackFrames);
     }

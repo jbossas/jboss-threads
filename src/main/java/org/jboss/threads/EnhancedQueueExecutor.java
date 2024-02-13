@@ -557,6 +557,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          */
         public Builder setKeepAliveTime(final Duration keepAliveTime) {
             Assert.checkNotNullParam("keepAliveTime", keepAliveTime);
+            if (keepAliveTime.compareTo(Duration.ZERO) <= 0) {
+                throw Messages.msg.nonPositiveKeepAlive(keepAliveTime);
+            }
             this.keepAliveTime = keepAliveTime;
             return this;
         }
@@ -572,10 +575,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          */
         @Deprecated
         public Builder setKeepAliveTime(final long keepAliveTime, final TimeUnit keepAliveUnits) {
-            Assert.checkMinimumParameter("keepAliveTime", 1L, keepAliveTime);
             Assert.checkNotNullParam("keepAliveUnits", keepAliveUnits);
-            this.keepAliveTime = Duration.of(keepAliveTime, JDKSpecific.timeToTemporal(keepAliveUnits));
-            return this;
+            return setKeepAliveTime(Duration.of(keepAliveTime, JDKSpecific.timeToTemporal(keepAliveUnits)));
         }
 
         /**
@@ -2481,7 +2482,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         @Override
-        @SuppressWarnings("rawtypes")
         public void run() {
             if (isShutdownInterrupt(threadStatus)) {
                 Thread.currentThread().interrupt();
@@ -2492,7 +2492,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             final Thread currentThread = Thread.currentThread();
             final ClassLoader old = JBossExecutors.getAndSetContextClassLoader(currentThread, contextClassLoader);
             try {
-                ((ContextHandler)contextHandler).runWith(delegate, context);
+                doRunWith(delegate, context);
             } catch (Throwable t) {
                 try {
                     exceptionHandler.uncaughtException(Thread.currentThread(), t);
@@ -2509,6 +2509,11 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     completedTaskCounter.increment();
                 }
             }
+        }
+
+        @SuppressWarnings("unchecked")
+        private <T> void doRunWith(Runnable delegate, Object context) {
+            ((ContextHandler<T>)contextHandler).runWith(delegate, (T) context);
         }
 
         /**
@@ -2627,6 +2632,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             }
         }
 
+        @SuppressWarnings("unchecked")
         public V get() throws InterruptedException, ExecutionException {
             int state;
             synchronized (this) {
@@ -2649,7 +2655,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                             throw new ExecutionException((Throwable) result);
                         }
                         case ASF_ST_FINISHED: {
-                            //noinspection unchecked
                             return (V) result;
                         }
                     }
@@ -2657,6 +2662,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             }
         }
 
+        @SuppressWarnings("unchecked")
         public V get(final long timeout, final TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
             long remaining = unit.toNanos(timeout);
             long start = System.nanoTime();
@@ -2684,7 +2690,6 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                             throw new ExecutionException((Throwable) result);
                         }
                         case ASF_ST_FINISHED: {
-                            //noinspection unchecked
                             return (V) result;
                         }
                     }

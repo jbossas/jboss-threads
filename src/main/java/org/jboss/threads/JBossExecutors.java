@@ -17,6 +17,7 @@ import sun.misc.Unsafe;
 /**
  * JBoss thread- and executor-related utility and factory methods.
  */
+@SuppressWarnings("deprecation")
 public final class JBossExecutors {
 
     private static final Logger THREAD_ERROR_LOGGER = Logger.getLogger("org.jboss.threads.errors");

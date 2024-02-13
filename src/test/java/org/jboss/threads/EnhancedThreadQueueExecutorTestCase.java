@@ -4,6 +4,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -51,18 +52,17 @@ public class EnhancedThreadQueueExecutorTestCase {
     public void testInvalidValuesKeepAliveZero() {
         Assertions.assertThatExceptionOfType(IllegalArgumentException.class)
                         .isThrownBy(() -> new EnhancedQueueExecutor.Builder()
-                .setKeepAliveTime(0, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ZERO)
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
                 .build());
-        ;
     }
 
     @Test
     public void testInvalidValuesKeepAliveNegative() {
         Assertions.assertThatExceptionOfType(IllegalArgumentException.class)
                 .isThrownBy(() -> new EnhancedQueueExecutor.Builder()
-                .setKeepAliveTime(-3456, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(-3456))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
                 .build());
@@ -72,7 +72,7 @@ public class EnhancedThreadQueueExecutorTestCase {
     public void testInvalidValuesCoreSizeNegative() {
         Assertions.assertThatExceptionOfType(IllegalArgumentException.class)
                 .isThrownBy(() -> new EnhancedQueueExecutor.Builder()
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(-5)
                 .setMaximumPoolSize(maxSize)
                 .build());
@@ -82,7 +82,7 @@ public class EnhancedThreadQueueExecutorTestCase {
     public void testInvalidValuesMaxSizeNegative() {
         Assertions.assertThatExceptionOfType(IllegalArgumentException.class)
                 .isThrownBy(() -> new EnhancedQueueExecutor.Builder()
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(-3)
                 .build());
@@ -92,7 +92,7 @@ public class EnhancedThreadQueueExecutorTestCase {
     public void testCoreSizeBiggerThanMaxSize() {
         int expectedCorePoolSize = 5;
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(2 * expectedCorePoolSize)
                 .setMaximumPoolSize(expectedCorePoolSize)
                 .build();
@@ -110,7 +110,7 @@ public class EnhancedThreadQueueExecutorTestCase {
     @Test
     public void testThreadReuse() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
                 .build();
@@ -154,7 +154,7 @@ public class EnhancedThreadQueueExecutorTestCase {
     @Disabled("This test consistently fails, see JBTHR-67")
     public void testThreadReuseAboveCoreSize() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(60000, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofSeconds(60))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
                 .build();
@@ -202,7 +202,7 @@ public class EnhancedThreadQueueExecutorTestCase {
     @Disabled("This test consistently fails, see JBTHR-67")
     public void testKeepaliveTime() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
                 .allowCoreThreadTimeOut(false)
@@ -241,7 +241,7 @@ public class EnhancedThreadQueueExecutorTestCase {
     @Test
     public void testKeepaliveTime2() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(coreSize)
                 .build();
@@ -267,7 +267,7 @@ public class EnhancedThreadQueueExecutorTestCase {
     @Test
     public void testKeepaliveTimeWithCoreThreadTimeoutEnabled() throws TimeoutException, InterruptedException {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .allowCoreThreadTimeOut(true)
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
@@ -294,7 +294,7 @@ public class EnhancedThreadQueueExecutorTestCase {
     @Test
     public void testPrestartCoreThreads() {
         EnhancedQueueExecutor executor = (new EnhancedQueueExecutor.Builder())
-                .setKeepAliveTime(keepaliveTimeMillis, TimeUnit.MILLISECONDS)
+                .setKeepAliveTime(Duration.ofMillis(keepaliveTimeMillis))
                 .setCorePoolSize(coreSize)
                 .setMaximumPoolSize(maxSize)
                 .build();
@@ -341,7 +341,7 @@ public class EnhancedThreadQueueExecutorTestCase {
         final CountDownLatch terminateLatch = new CountDownLatch(1);
         EnhancedQueueExecutor executor = new EnhancedQueueExecutor.Builder()
                 .setCorePoolSize(10)
-                .setKeepAliveTime(1, TimeUnit.NANOSECONDS)
+                .setKeepAliveTime(Duration.ofNanos(1))
                 .setTerminationTask(new Runnable() {
                     @Override
                     public void run() {
@@ -359,7 +359,7 @@ public class EnhancedThreadQueueExecutorTestCase {
         final CountDownLatch terminateLatch = new CountDownLatch(1);
         EnhancedQueueExecutor executor = new EnhancedQueueExecutor.Builder()
                 .setCorePoolSize(10)
-                .setKeepAliveTime(1, TimeUnit.NANOSECONDS)
+                .setKeepAliveTime(Duration.ofNanos(1))
                 .setTerminationTask(new Runnable() {
                     @Override
                     public void run() {
