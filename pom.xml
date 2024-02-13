@@ -34,7 +34,7 @@
     <parent>
         <groupId>org.jboss</groupId>
         <artifactId>jboss-parent</artifactId>
-        <version>39</version>
+        <version>43</version>
     </parent>
 
     <issueManagement>
@@ -63,8 +63,7 @@
         <jboss.threads.eqe.unlimited-queue>false</jboss.threads.eqe.unlimited-queue>
         <jboss.threads.eqe.register-mbean>false</jboss.threads.eqe.register-mbean>
 
-        <jdk.min.version>9</jdk.min.version>
-        <javadoc.additional.params>--release=8</javadoc.additional.params>
+        <jdk.min.version>11</jdk.min.version>
     </properties>
 
     <dependencies>
