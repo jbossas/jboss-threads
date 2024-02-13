@@ -1,0 +1,6 @@
+name: org.jboss.threads
+
+requires:
+  - module: jdk.unsupported
+  - module: org.jboss.logging
+  - module: org.wildfly.common
