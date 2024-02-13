@@ -123,7 +123,7 @@
         <dependency>
             <groupId>org.jboss.logmanager</groupId>
             <artifactId>jboss-logmanager</artifactId>
-            <version>2.1.14.Final</version>
+            <version>3.0.4.Final</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
