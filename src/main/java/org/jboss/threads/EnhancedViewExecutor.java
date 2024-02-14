@@ -355,7 +355,7 @@ final class EnhancedViewExecutor extends ViewExecutor {
                 // try again
                 if (spins < MAX_QUEUE_SPINS) {
                     spins++;
-                    JDKSpecific.onSpinWait();
+                    Thread.onSpinWait();
                 } else {
                     Thread.yield();
                 }
