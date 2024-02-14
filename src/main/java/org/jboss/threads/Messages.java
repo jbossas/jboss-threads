@@ -1,5 +1,7 @@
 package org.jboss.threads;
 
+import java.time.Duration;
+
 import org.jboss.logging.BasicLogger;
 import org.jboss.logging.Logger;
 import org.jboss.logging.annotations.Cause;
@@ -63,9 +65,7 @@ interface Messages extends BasicLogger {
     @Message(id = 103, value = "The current thread does not support interrupt handlers")
     IllegalStateException noInterruptHandlers();
 
-    @Message(id = 104, value = "Executor is not shut down")
-    @Deprecated
-    IllegalStateException notShutDown();
+//    @Message(id = 104, value = "Executor is not shut down")
 
 //    @Message(id = 105, value = "Concurrent modification of collection detected")
 
@@ -76,6 +76,9 @@ interface Messages extends BasicLogger {
     @Message(id = 108, value = "Interrupt handler %s threw an exception")
     @LogMessage(level = Logger.Level.ERROR)
     void interruptHandlerThrew(@Cause Throwable cause, InterruptHandler interruptHandler);
+
+    @Message(id = 109, value = "Keep-alive time must be positive but was %s")
+    IllegalArgumentException nonPositiveKeepAlive(Duration actual);
 
     // security
 
