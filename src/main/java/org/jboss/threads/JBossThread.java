@@ -152,7 +152,7 @@ public class JBossThread extends Thread {
             } else if (oldVal == STATE_INTERRUPT_IN_PROGRESS) {
                 // wait for interruption on other thread to be completed
                 if (spins < MAX_INTERRUPT_SPINS) {
-                    JDKSpecific.onSpinWait();
+                    onSpinWait();
                     spins++;
                 } else {
                     Thread.yield();

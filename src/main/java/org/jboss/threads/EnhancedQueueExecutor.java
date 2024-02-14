@@ -576,7 +576,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         @Deprecated
         public Builder setKeepAliveTime(final long keepAliveTime, final TimeUnit keepAliveUnits) {
             Assert.checkNotNullParam("keepAliveUnits", keepAliveUnits);
-            return setKeepAliveTime(Duration.of(keepAliveTime, JDKSpecific.timeToTemporal(keepAliveUnits)));
+            return setKeepAliveTime(Duration.of(keepAliveTime, keepAliveUnits.toChronoUnit()));
         }
 
         /**
@@ -2248,7 +2248,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 if (spins < YIELD_FACTOR) {
                     Thread.yield();
                 } else {
-                    JDKSpecific.onSpinWait();
+                    Thread.onSpinWait();
                 }
                 spins--;
                 if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
@@ -2281,7 +2281,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     if (spins < YIELD_FACTOR) {
                         Thread.yield();
                     } else {
-                        JDKSpecific.onSpinWait();
+                        Thread.onSpinWait();
                     }
                     if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
                         return;
