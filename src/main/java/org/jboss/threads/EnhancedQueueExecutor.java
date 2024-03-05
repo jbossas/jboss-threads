@@ -2614,6 +2614,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     case ASF_ST_SUBMITTED: {
                         this.state = ASF_ST_CANCELLED;
                         notifyAll();
+                        doCancel();
                         return true;
                     }
                     case ASF_ST_RUNNING: {
@@ -2630,6 +2631,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                     }
                 }
             }
+        }
+
+        void doCancel() {
         }
 
         @SuppressWarnings("unchecked")
@@ -2869,7 +2873,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     }
 
     final class RunnableScheduledFuture extends AbstractScheduledFuture<Void> {
-        final Runnable runnable;
+        Runnable runnable;
 
         RunnableScheduledFuture(final Runnable runnable, final long delay, final TimeUnit unit) {
             super(delay, unit);
@@ -2877,8 +2881,16 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         Void performTask() {
-            runnable.run();
+            try {
+                runnable.run();
+            } finally {
+                runnable = null;
+            }
             return null;
+        }
+
+        void doCancel() {
+            runnable = null;
         }
 
         StringBuilder toString(final StringBuilder b) {
@@ -2887,7 +2899,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     }
 
     final class CallableScheduledFuture<V> extends AbstractScheduledFuture<V> {
-        final Callable<V> callable;
+        Callable<V> callable;
 
         CallableScheduledFuture(final Callable<V> callable, final long delay, final TimeUnit unit) {
             super(delay, unit);
@@ -2895,7 +2907,15 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         V performTask() throws Exception {
-            return callable.call();
+            try {
+                return callable.call();
+            } finally {
+                callable = null;
+            }
+        }
+
+        void doCancel() {
+            callable = null;
         }
 
         StringBuilder toString(final StringBuilder b) {
@@ -2945,7 +2965,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     }
 
     final class FixedRateRunnableScheduledFuture extends RepeatingScheduledFuture<Void> {
-        final Runnable runnable;
+        Runnable runnable;
 
         FixedRateRunnableScheduledFuture(final Runnable runnable, final long delay, final long period, final TimeUnit unit) {
             super(delay, period, unit);
@@ -2962,13 +2982,17 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             return null;
         }
 
+        void doCancel() {
+            runnable = null;
+        }
+
         StringBuilder toString(final StringBuilder b) {
             return super.toString(b).append(runnable);
         }
     }
 
     final class FixedDelayRunnableScheduledFuture extends RepeatingScheduledFuture<Void> {
-        final Runnable runnable;
+        Runnable runnable;
 
         FixedDelayRunnableScheduledFuture(final Runnable runnable, final long delay, final long period, final TimeUnit unit) {
             super(delay, period, unit);
@@ -2982,6 +3006,10 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         Void performTask() {
             runnable.run();
             return null;
+        }
+
+        void doCancel() {
+            runnable = null;
         }
 
         StringBuilder toString(final StringBuilder b) {
