@@ -2,6 +2,8 @@ package org.jboss.threads;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CountDownLatch;
@@ -39,21 +41,16 @@ public class ScheduledEnhancedQueueExecutorTest {
             ScheduledFuture<Boolean> future = eqe.schedule(() -> { latch.countDown(); Thread.sleep(1_000_000_000L); return Boolean.TRUE; }, 1, TimeUnit.NANOSECONDS);
             assertTrue(latch.await(5, TimeUnit.SECONDS), "Timely task execution");
             assertFalse(future.isCancelled());
-            // task is running; cancel will fail
-            assertFalse(future.cancel(false));
+            // task is running
+            assertTrue(future.cancel(false));
             assertFalse(future.isCancelled());
             assertFalse(future.isDone());
-            // now try to interrupt it (cancel still fails but the interrupt should be delivered)
-            assertFalse(future.cancel(true));
+            // now try to interrupt it
+            assertTrue(future.cancel(true));
             assertFalse(future.isCancelled());
             // now get it
-            try {
-                future.get(100L, TimeUnit.MILLISECONDS);
-                fail("Expected exception");
-            } catch (ExecutionException ee) {
-                Throwable cause = ee.getCause();
-                assertTrue(cause instanceof InterruptedException, "Expected " + cause + " to be an InterruptedException");
-            }
+            Throwable cause = assertThrows(ExecutionException.class, () -> future.get(100L, TimeUnit.MILLISECONDS)).getCause();
+            assertInstanceOf(InterruptedException.class, cause);
             assertTrue(future.isDone());
             eqe.shutdown();
             assertTrue(eqe.awaitTermination(5, TimeUnit.SECONDS), "Timely shutdown");
@@ -144,6 +141,22 @@ public class ScheduledEnhancedQueueExecutorTest {
         } finally {
             eqe.shutdownNow();
         }
+    }
+
+    @Test
+    public void testThatFixedDelayTerminatesTask() {
+        EnhancedQueueExecutor eqe = new EnhancedQueueExecutor.Builder().build();
+        var r = new Runnable() {
+            final ScheduledFuture<?> future = eqe.scheduleWithFixedDelay(this, 0, 100, TimeUnit.MILLISECONDS);
+            final ArrayList<LocalDateTime> times = new ArrayList<>();
+            public void run() {
+                times.add(LocalDateTime.now());
+                if (times.size() >= 5) {
+                    future.cancel(false);
+                }
+            }
+        };
+        assertThrows(CancellationException.class, () -> r.future.get(5, TimeUnit.SECONDS));
     }
 
     @Test
