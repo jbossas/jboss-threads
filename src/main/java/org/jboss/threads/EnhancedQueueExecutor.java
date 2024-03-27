@@ -2536,11 +2536,12 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     static final int ASF_ST_WAITING = 0;
     static final int ASF_ST_CANCELLED = 1;
-    static final int ASF_ST_SUBMITTED = 2;
-    static final int ASF_ST_RUNNING = 3;
-    static final int ASF_ST_FINISHED = 4;
-    static final int ASF_ST_FAILED = 5;
-    static final int ASF_ST_REJECTED = 6;
+    static final int ASF_ST_CANCEL_PENDING = 2;
+    static final int ASF_ST_SUBMITTED = 3;
+    static final int ASF_ST_RUNNING = 4;
+    static final int ASF_ST_FINISHED = 5;
+    static final int ASF_ST_FAILED = 6;
+    static final int ASF_ST_REJECTED = 7;
 
     static final AbstractScheduledFuture<?>[] NO_FUTURES = new AbstractScheduledFuture<?>[0];
 
@@ -2597,6 +2598,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         }
 
         public boolean isCancelled() {
+            int state = this.state;
             return state == ASF_ST_CANCELLED;
         }
 
@@ -2617,11 +2619,16 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                         doCancel();
                         return true;
                     }
+                    case ASF_ST_CANCEL_PENDING:
                     case ASF_ST_RUNNING: {
+                        this.state = ASF_ST_CANCEL_PENDING;
                         if (mayInterruptIfRunning) {
-                            liveThread.interrupt();
+                            Thread liveThread = this.liveThread;
+                            if (liveThread != null) {
+                                liveThread.interrupt();
+                            }
                         }
-                        return false;
+                        return true;
                     }
                     case ASF_ST_CANCELLED: {
                         return true;
@@ -2643,6 +2650,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 for (;;) {
                     state = this.state;
                     switch (state) {
+                        case ASF_ST_CANCEL_PENDING:
                         case ASF_ST_WAITING:
                         case ASF_ST_SUBMITTED:
                         case ASF_ST_RUNNING: {
@@ -2659,6 +2667,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                             throw new ExecutionException((Throwable) result);
                         }
                         case ASF_ST_FINISHED: {
+                            // never happens for repeatable tasks
                             return (V) result;
                         }
                     }
@@ -2675,6 +2684,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 for (;;) {
                     state = this.state;
                     switch (state) {
+                        case ASF_ST_CANCEL_PENDING:
                         case ASF_ST_WAITING:
                         case ASF_ST_SUBMITTED:
                         case ASF_ST_RUNNING: {
@@ -2817,6 +2827,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         void fail(Throwable t) {
             synchronized (this) {
                 switch (state) {
+                    case ASF_ST_CANCEL_PENDING:
                     case ASF_ST_WAITING:
                     case ASF_ST_SUBMITTED:
                     case ASF_ST_RUNNING: {
@@ -2840,11 +2851,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         void finish(V result) {
             // overridden in subclasses where the task repeats
             synchronized (this) {
+                liveThread = null;
                 switch (state) {
+                    case ASF_ST_CANCEL_PENDING:
                     case ASF_ST_RUNNING: {
+                        // for non-repeating tasks, a pending cancel does not invalidate finishing the task
                         this.result = result;
                         this.state = ASF_ST_FINISHED;
-                        liveThread = null;
                         notifyAll();
                         return;
                     }
@@ -2936,27 +2949,29 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
          */
         abstract void adjustTime();
 
-        public void run() {
-            super.run();
-            // if an exception is thrown, we will have failed already anyway
-            adjustTime();
+        void finish(final V result) {
             synchronized (this) {
+                liveThread = null;
                 switch (state) {
+                    case ASF_ST_CANCEL_PENDING: {
+                        this.state = ASF_ST_CANCELLED;
+                        notifyAll();
+                        return;
+                    }
                     case ASF_ST_RUNNING: {
+                        // repeating tasks never actually finish
+                        adjustTime();
                         state = ASF_ST_WAITING;
                         schedulerTask.schedule(this);
                         return;
                     }
                     default: {
-                        // in all other cases, we failed so the task should not be rescheduled
+                        // invalid state
+                        fail(badState());
                         return;
                     }
                 }
             }
-        }
-
-        void finish(final V result) {
-            // repeating tasks never actually finish
         }
 
         StringBuilder toString(final StringBuilder b) {
