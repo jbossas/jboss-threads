@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,8 +47,10 @@ import java.util.concurrent.locks.ReentrantLock;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 
+import io.smallrye.common.cpu.CacheInfo;
 import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
+
 import org.wildfly.common.Assert;
 import org.wildfly.common.cpu.ProcessorInfo;
 
@@ -66,7 +69,7 @@ import org.wildfly.common.cpu.ProcessorInfo;
  *
  * @author <a href="mailto:david.lloyd@redhat.com">David M. Lloyd</a>
  */
-public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 implements ManageableThreadPoolExecutorService, ScheduledExecutorService {
+public final class EnhancedQueueExecutor extends AbstractExecutorService implements ManageableThreadPoolExecutorService, ScheduledExecutorService {
     private static final Thread[] NO_THREADS = new Thread[0];
 
     static {
@@ -206,6 +209,35 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
 
     /**
+     * Unshared object fields (indexes are relative to units of cache line size):
+     * <ul>
+     *     <li>{@code 0} {@code tail}: The node <em>preceding</em> the tail node; this field is not {@code null}.
+     *     This is the insertion point for tasks (and the removal point for waiting threads).</li>
+     *     <li>{@code 1} {@code head}: The node <em>preceding</em> the head node; this field is not {@code null}.
+     *     This is the removal point for tasks (and the insertion point for waiting threads).</li>
+     * </ul>
+     */
+    final Object[] unsharedObjects = new Object[RuntimeFields.unsharedObjectsSize];
+
+    /**
+     * Unshared long fields (indexes are relative to units of cache line size):
+     * <ul>
+     *     <li>{@code 0} {@code threadStatus}: Information about the current pool status:
+     *         <ul>
+     *             <li>Bit 00..19: current number of running threads</li>
+     *             <li>Bit 20..39: core pool size</li>
+     *             <li>Bit 40..59: maximum pool size</li>
+     *             <li>Bit 60: 1 = allow core thread timeout; 0 = disallow core thread timeout</li>
+     *             <li>Bit 61: 1 = shutdown requested; 0 = shutdown not requested</li>
+     *             <li>Bit 62: 1 = shutdown task interrupt requested; 0 = interrupt not requested</li>
+     *             <li>Bit 63: 1 = shutdown complete; 0 = shutdown not complete</li>
+     *         </ul>
+     *     </li>
+     * </ul>
+     */
+    final long[] unsharedLongs = new long[RuntimeFields.unsharedLongsSize];
+
+    /**
      * The linked list of threads waiting for termination of this thread pool.
      */
     @SuppressWarnings("unused") // used by field updater
@@ -279,6 +311,9 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // Updaters
     // =======================================================
 
+    private static final int numUnsharedLongs = 1;
+    private static final int numUnsharedObjects = 2;
+
     private static final long terminationWaitersOffset;
 
     private static final long queueSizeOffset;
@@ -286,6 +321,33 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     private static final long peakThreadCountOffset;
     private static final long activeCountOffset;
     private static final long peakQueueSizeOffset;
+
+    // GraalVM should initialize this class at run time
+    private static final class RuntimeFields {
+        private static final int unsharedObjectsSize;
+        private static final int unsharedLongsSize;
+
+        private static final long headOffset;
+        private static final long tailOffset;
+        private static final long threadStatusOffset;
+
+        static {
+            int cacheLine = CacheInfo.getSmallestDataCacheLineSize();
+            if (cacheLine == 0) {
+                // guess
+                cacheLine = 64;
+            }
+            int longScale = unsafe.arrayIndexScale(long[].class);
+            int objScale = unsafe.arrayIndexScale(Object[].class);
+            // these fields are in units of array scale
+            unsharedObjectsSize = cacheLine / objScale * (numUnsharedObjects + 1);
+            unsharedLongsSize = cacheLine / longScale * (numUnsharedLongs + 1);
+            // these fields are in bytes
+            headOffset = unsafe.arrayBaseOffset(Object[].class) + cacheLine;
+            tailOffset = unsafe.arrayBaseOffset(Object[].class) + cacheLine * 2;
+            threadStatusOffset = unsafe.arrayBaseOffset(long[].class) + cacheLine;
+        }
+    }
 
     static {
         try {
@@ -348,7 +410,8 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     static final AtomicInteger sequence = new AtomicInteger(1);
 
     EnhancedQueueExecutor(final Builder builder) {
-        super();
+        setHeadPlain(setTailPlain(new EnhancedQueueExecutor.TaskNode(null)));
+
         int maxSize = builder.getMaximumPoolSize();
         int coreSize = min(builder.getCorePoolSize(), maxSize);
         this.handoffExecutor = builder.getHandoffExecutor();
@@ -363,7 +426,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         final Duration keepAliveTime = builder.getKeepAliveTime();
         // initial dead node
         // thread stat
-        threadStatus = withCoreSize(withMaxSize(withAllowCoreTimeout(0L, builder.allowsCoreThreadTimeOut()), maxSize), coreSize);
+        setThreadStatusPlain(withCoreSize(withMaxSize(withAllowCoreTimeout(0L, builder.allowsCoreThreadTimeOut()), maxSize), coreSize));
         timeoutNanos = TimeUtil.clampedPositiveNanos(keepAliveTime);
         queueSize = withMaxQueueSize(withCurrentQueueSize(0L, 0), builder.getMaximumQueueSize());
         mxBean = new MXBeanImpl();
@@ -786,7 +849,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         boolean ok = false;
         if (result == EXE_OK) {
             // last check to ensure that there is at least one existent thread to avoid rare thread timeout race condition
-            if (currentSizeOf(threadStatus) == 0 && tryAllocateThread(0.0f) == AT_YES && ! doStartThread(null)) {
+            if (currentSizeOf(getThreadStatus()) == 0 && tryAllocateThread(0.0f) == AT_YES && ! doStartThread(null)) {
                 deallocateThread();
             }
             if (UPDATE_STATISTICS) submittedTaskCounter.increment();
@@ -824,13 +887,13 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     public List<Runnable> shutdownNow() {
         shutdown(true);
         final ArrayList<Runnable> list = new ArrayList<>();
-        TaskNode head = this.head;
+        TaskNode head = getHead();
         QNode headNext;
         for (;;) {
             headNext = head.getNext();
             if (headNext == head) {
                 // a racing consumer has already consumed it (and moved head)
-                head = this.head;
+                head = getHead();
                 continue;
             }
             if (headNext instanceof TaskNode) {
@@ -856,7 +919,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @return {@code true} if shutdown was requested, {@code false} otherwise
      */
     public boolean isShutdown() {
-        return isShutdownRequested(threadStatus);
+        return isShutdownRequested(getThreadStatus());
     }
 
     /**
@@ -865,7 +928,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @return {@code true} if shutdown has completed, {@code false} otherwise
      */
     public boolean isTerminated() {
-        return isShutdownComplete(threadStatus);
+        return isShutdownComplete(getThreadStatus());
     }
 
     /**
@@ -981,7 +1044,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         // post-actions (fail):
         //   repeat state change until success or return
         do {
-            oldStatus = threadStatus;
+            oldStatus = getThreadStatus();
             newStatus = withShutdownRequested(oldStatus);
             if (interrupt) newStatus = withShutdownInterrupt(newStatus);
             if (currentSizeOf(oldStatus) == 0) newStatus = withShutdownComplete(newStatus);
@@ -994,7 +1057,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             // terminate the scheduler
             schedulerTask.shutdown();
             // clear out all consumers and append a dummy waiter node
-            TaskNode tail = this.tail;
+            TaskNode tail = getTail();
             QNode tailNext;
             // a marker to indicate that termination was requested
             for (;;) {
@@ -1059,7 +1122,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @return {@code true} if the thread pool is terminating, or {@code false} if the thread pool is not terminating or has completed termination
      */
     public boolean isTerminating() {
-        final long threadStatus = this.threadStatus;
+        final long threadStatus = getThreadStatus();
         return isShutdownRequested(threadStatus) && ! isShutdownComplete(threadStatus);
     }
 
@@ -1128,7 +1191,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @see Builder#getCorePoolSize() Builder.getCorePoolSize()
      */
     public int getCorePoolSize() {
-        return coreSizeOf(threadStatus);
+        return coreSizeOf(getThreadStatus());
     }
 
     /**
@@ -1143,7 +1206,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         Assert.checkMaximumParameter("corePoolSize", TS_THREAD_CNT_MASK, corePoolSize);
         long oldVal, newVal;
         do {
-            oldVal = threadStatus;
+            oldVal = getThreadStatus();
             if (corePoolSize > maxSizeOf(oldVal)) {
                 // automatically bump up max size to match
                 newVal = withCoreSize(withMaxSize(oldVal, corePoolSize), corePoolSize);
@@ -1166,7 +1229,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @see Builder#getMaximumPoolSize() Builder.getMaximumPoolSize()
      */
     public int getMaximumPoolSize() {
-        return maxSizeOf(threadStatus);
+        return maxSizeOf(getThreadStatus());
     }
 
     /**
@@ -1181,7 +1244,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         Assert.checkMaximumParameter("maxPoolSize", TS_THREAD_CNT_MASK, maxPoolSize);
         long oldVal, newVal;
         do {
-            oldVal = threadStatus;
+            oldVal = getThreadStatus();
             if (maxPoolSize < coreSizeOf(oldVal)) {
                 // automatically bump down core size to match
                 newVal = withCoreSize(withMaxSize(oldVal, maxPoolSize), maxPoolSize);
@@ -1205,7 +1268,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @see Builder#allowsCoreThreadTimeOut() Builder.allowsCoreThreadTimeOut()
      */
     public boolean allowsCoreThreadTimeOut() {
-        return isAllowCoreTimeout(threadStatus);
+        return isAllowCoreTimeout(getThreadStatus());
     }
 
     /**
@@ -1218,7 +1281,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     public void allowCoreThreadTimeOut(boolean value) {
         long oldVal, newVal;
         do {
-            oldVal = threadStatus;
+            oldVal = getThreadStatus();
             newVal = withAllowCoreTimeout(oldVal, value);
             if (oldVal == newVal) return;
         } while (! compareAndSetThreadStatus(oldVal, newVal));
@@ -1439,7 +1502,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
      * @return an estimate of the current number of active threads in the pool
      */
     public int getPoolSize() {
-        return currentSizeOf(threadStatus);
+        return currentSizeOf(getThreadStatus());
     }
 
     /**
@@ -1527,7 +1590,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                             continue waitingForTask;
                         } else {
                             final long timeoutNanos = EnhancedQueueExecutor.this.timeoutNanos;
-                            long oldVal = threadStatus;
+                            long oldVal = getThreadStatus();
                             if (elapsed >= timeoutNanos || task == EXIT || currentSizeOf(oldVal) > maxSizeOf(oldVal)) {
                                 // try to exit this thread, if we are allowed
                                 if (task == EXIT ||
@@ -1543,7 +1606,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                                                 return;
                                             }
                                             if (UPDATE_STATISTICS) spinMisses.increment();
-                                            oldVal = threadStatus;
+                                            oldVal = getThreadStatus();
                                         }
                                         //throw Assert.unreachableCode();
                                     }
@@ -1589,7 +1652,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             TaskNode head;
             QNode headNext;
             for (;;) {
-                head = EnhancedQueueExecutor.this.head;
+                head = getHead();
                 headNext = head.getNext();
                 // headNext == head can happen if another consumer has already consumed head:
                 // retry with a fresh head
@@ -1645,7 +1708,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
         int oldSize;
         long oldStat;
         for (;;) {
-            oldStat = threadStatus;
+            oldStat = getThreadStatus();
             if (isShutdownRequested(oldStat)) {
                 return AT_SHUTDOWN;
             }
@@ -1694,7 +1757,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     void deallocateThread() {
         long oldStat;
         do {
-            oldStat = threadStatus;
+            oldStat = getThreadStatus();
         } while (! tryDeallocateThread(oldStat));
     }
 
@@ -1766,7 +1829,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
     private int tryExecute(final Task runnable) {
         QNode tailNext;
-        TaskNode tail = this.tail;
+        TaskNode tail = getTail();
         TaskNode node = null;
         for (;;) {
             tailNext = tail.getNext();
@@ -1873,7 +1936,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
             }
             // retry with new tail(snapshot)
             if (UPDATE_STATISTICS) spinMisses.increment();
-            tail = this.tail;
+            tail = getTail();
         }
         // not reached
     }
@@ -1903,7 +1966,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 unpark(waiters.getThread());
                 waiters = waiters.getNext();
             }
-            tail.setNext(TERMINATE_COMPLETE);
+            getTail().setNext(TERMINATE_COMPLETE);
             if (!DISABLE_MBEAN) {
                 //The check for DISABLE_MBEAN is redundant as acc would be null,
                 //but GraalVM needs the hint so to not make JMX reachable.
@@ -1926,6 +1989,45 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
     // Compare-and-set operations
     // =======================================================
+
+    TaskNode getTail() {
+        return (TaskNode) unsafe.getObjectVolatile(unsharedObjects, RuntimeFields.tailOffset);
+    }
+
+    TaskNode setTailPlain(TaskNode tail) {
+        unsafe.putObject(unsharedObjects, RuntimeFields.tailOffset, tail);
+        return tail;
+    }
+
+    boolean compareAndSetTail(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
+        return getTail() == expect && unsafe.compareAndSwapObject(unsharedObjects, RuntimeFields.tailOffset, expect, update);
+    }
+
+    TaskNode getHead() {
+        return (TaskNode) unsafe.getObjectVolatile(unsharedObjects, RuntimeFields.headOffset);
+    }
+
+    TaskNode setHeadPlain(TaskNode head) {
+        unsafe.putObject(unsharedObjects, RuntimeFields.headOffset, head);
+        return head;
+    }
+
+    boolean compareAndSetHead(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
+        return unsafe.compareAndSwapObject(unsharedObjects, RuntimeFields.headOffset, expect, update);
+    }
+
+    long getThreadStatus() {
+        return unsafe.getLongVolatile(unsharedLongs, RuntimeFields.threadStatusOffset);
+    }
+
+    long setThreadStatusPlain(long status) {
+        unsafe.putLong(unsharedLongs, RuntimeFields.threadStatusOffset, status);
+        return status;
+    }
+
+    boolean compareAndSetThreadStatus(final long expect, final long update) {
+        return unsafe.compareAndSwapLong(unsharedLongs, RuntimeFields.threadStatusOffset, expect, update);
+    }
 
     void incrementActiveCount() {
         unsafe.getAndAddInt(this, activeCountOffset, 1);
@@ -2082,6 +2184,39 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
     // =======================================================
     // Static configuration
     // =======================================================
+
+    static int readIntPropertyPrefixed(String name, int defVal) {
+        try {
+            return Integer.parseInt(readPropertyPrefixed(name, Integer.toString(defVal)));
+        } catch (NumberFormatException ignored) {
+            return defVal;
+        }
+    }
+
+    static boolean readBooleanPropertyPrefixed(String name, boolean defVal) {
+        return Boolean.parseBoolean(readPropertyPrefixed(name, Boolean.toString(defVal)));
+    }
+
+    static String readPropertyPrefixed(String name, String defVal) {
+        return readProperty("jboss.threads.eqe." + name, defVal);
+    }
+
+    static String readProperty(String name, String defVal) {
+        final SecurityManager sm = System.getSecurityManager();
+        if (sm != null) {
+            return doPrivileged(new PrivilegedAction<String>() {
+                public String run() {
+                    return readPropertyRaw(name, defVal);
+                }
+            });
+        } else {
+            return readPropertyRaw(name, defVal);
+        }
+    }
+
+    static String readPropertyRaw(final String name, final String defVal) {
+        return System.getProperty(name, defVal);
+    }
 
     // =======================================================
     // Utilities
@@ -2483,7 +2618,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
 
         @Override
         public void run() {
-            if (isShutdownInterrupt(threadStatus)) {
+            if (isShutdownInterrupt(getThreadStatus())) {
                 Thread.currentThread().interrupt();
             } else {
                 Thread.interrupted();
@@ -2776,7 +2911,7 @@ public final class EnhancedQueueExecutor extends EnhancedQueueExecutorBase6 impl
                 boolean ok = false;
                 if (result == EXE_OK) {
                     // last check to ensure that there is at least one existent thread to avoid rare thread timeout race condition
-                    if (currentSizeOf(threadStatus) == 0 && tryAllocateThread(0.0f) == AT_YES && ! doStartThread(null)) {
+                    if (currentSizeOf(getThreadStatus()) == 0 && tryAllocateThread(0.0f) == AT_YES && ! doStartThread(null)) {
                         deallocateThread();
                     }
                     if (UPDATE_STATISTICS) submittedTaskCounter.increment();
