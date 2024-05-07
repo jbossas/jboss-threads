@@ -1,10 +1,9 @@
 package org.jboss.threads;
 
 import org.jboss.logging.Logger;
-import org.wildfly.common.Assert;
-import org.wildfly.common.annotation.Nullable;
-import org.wildfly.common.cpu.ProcessorInfo;
-import org.wildfly.common.lock.Locks;
+import io.smallrye.common.constraint.Assert;
+import io.smallrye.common.constraint.Nullable;
+import io.smallrye.common.cpu.ProcessorInfo;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,6 +16,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.jboss.threads.JBossExecutors.unsafe;
 
@@ -100,7 +100,7 @@ final class EnhancedViewExecutor extends ViewExecutor {
         this.executeLock = queueLimit == 0
                 ? null
                 // Lock must be reentrant to handle same-thread executors or CallerRunsPolicy
-                : Locks.reentrantLock();
+                : new ReentrantLock();
         this.setExceptionHandler(uncaughtExceptionHandler);
     }
 

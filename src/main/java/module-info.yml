@@ -1,0 +1,10 @@
+name: org.jboss.threads
+
+requires:
+  - module: jdk.unsupported
+  - module: org.jboss.logging
+  - module: org.wildfly.common
+  - module: io.smallrye.common.annotation
+  - module: io.smallrye.common.constraint
+  - module: io.smallrye.common.cpu
+  - module: io.smallrye.common.function
