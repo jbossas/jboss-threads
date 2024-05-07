@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
-import org.wildfly.common.Assert;
+import io.smallrye.common.constraint.Assert;
 
 /**
  * A version of {@link ThreadPoolExecutor} which implements {@link ManageableThreadPoolExecutorService} in order to allow
