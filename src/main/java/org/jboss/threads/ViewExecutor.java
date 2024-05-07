@@ -1,6 +1,6 @@
 package org.jboss.threads;
 
-import org.wildfly.common.Assert;
+import io.smallrye.common.constraint.Assert;
 
 import java.security.PrivilegedAction;
 import java.util.concurrent.AbstractExecutorService;

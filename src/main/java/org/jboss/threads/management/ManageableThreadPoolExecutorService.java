@@ -2,7 +2,7 @@ package org.jboss.threads.management;
 
 import java.util.concurrent.ExecutorService;
 
-import org.wildfly.common.annotation.NotNull;
+import io.smallrye.common.constraint.NotNull;
 
 /**
  * A thread pool for which an MBean can be obtained.

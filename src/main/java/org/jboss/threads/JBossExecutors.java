@@ -11,7 +11,7 @@ import java.security.PrivilegedAction;
 import java.security.AccessController;
 
 import org.jboss.logging.Logger;
-import org.wildfly.common.Assert;
+import io.smallrye.common.constraint.Assert;
 import sun.misc.Unsafe;
 
 /**
