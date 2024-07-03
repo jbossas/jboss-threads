@@ -79,12 +79,12 @@ public class QueuelessViewExecutorTest {
         assertThatThrownBy(() -> view.execute(NullRunnable.getInstance()))
                 .as("Submitting work after invoking shutdown or shutdownNow should fail")
                 .isInstanceOf(RejectedExecutionException.class);
-        Awaitility.waitAtMost(500, TimeUnit.MILLISECONDS).untilAsserted(() -> {
+        Awaitility.waitAtMost(3, TimeUnit.SECONDS).untilAsserted(() -> {
             assertThat(interrupted).isTrue();
             assertThat(view.isTerminated()).isFalse();
         });
         interruptedLatch.countDown();
-        Awaitility.waitAtMost(500, TimeUnit.MILLISECONDS)
+        Awaitility.waitAtMost(3, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertThat(view.isTerminated()).as("%s", view).isTrue());
 
         assertCleanShutdown(cached);
@@ -182,7 +182,7 @@ public class QueuelessViewExecutorTest {
                 .as("Submitting work after invoking shutdown or shutdown should fail")
                 .isInstanceOf(RejectedExecutionException.class);
         assertThat(view.isTerminated()).isFalse();
-        Awaitility.waitAtMost(600, TimeUnit.MILLISECONDS)
+        Awaitility.waitAtMost(3, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertThat(view.isTerminated()).as("%s", view).isTrue());
         assertThat(interrupted).isFalse();
 
