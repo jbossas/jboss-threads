@@ -64,6 +64,8 @@
         <jboss.threads.eqe.register-mbean>false</jboss.threads.eqe.register-mbean>
 
         <jdk.min.version>11</jdk.min.version>
+
+        <version.jboss.logging.tools>3.0.0.Final</version.jboss.logging.tools>
     </properties>
 
     <dependencyManagement>
@@ -95,13 +97,13 @@
         <dependency>
             <groupId>org.jboss.logging</groupId>
             <artifactId>jboss-logging-annotations</artifactId>
-            <version>2.2.1.Final</version>
+            <version>${version.jboss.logging.tools}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.jboss.logging</groupId>
             <artifactId>jboss-logging-processor</artifactId>
-            <version>2.2.1.Final</version>
+            <version>${version.jboss.logging.tools}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
