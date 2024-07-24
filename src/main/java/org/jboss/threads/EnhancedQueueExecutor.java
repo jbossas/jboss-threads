@@ -51,8 +51,8 @@ import io.smallrye.common.cpu.CacheInfo;
 import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 
-import org.wildfly.common.Assert;
-import org.wildfly.common.cpu.ProcessorInfo;
+import io.smallrye.common.constraint.Assert;
+import io.smallrye.common.cpu.ProcessorInfo;
 
 /**
  * A task-or-thread queue backed thread pool executor service.  Tasks are added in a FIFO manner, and consumers in a LIFO manner.

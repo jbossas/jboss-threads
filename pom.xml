@@ -102,12 +102,6 @@
         </dependency>
         <dependency>
             <groupId>org.jboss.logging</groupId>
-            <artifactId>jboss-logging-processor</artifactId>
-            <version>${version.jboss.logging.tools}</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.jboss.logging</groupId>
             <artifactId>jboss-logging</artifactId>
             <version>3.6.0.Final</version>
         </dependency>
@@ -118,7 +112,19 @@
         </dependency>
         <dependency>
             <groupId>io.smallrye.common</groupId>
+            <artifactId>smallrye-common-annotation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.smallrye.common</groupId>
+            <artifactId>smallrye-common-constraint</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.smallrye.common</groupId>
             <artifactId>smallrye-common-cpu</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.smallrye.common</groupId>
+            <artifactId>smallrye-common-function</artifactId>
         </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -177,7 +183,17 @@
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <proc>full</proc>
+                    <annotationProcessorPaths>
+                        <annotationProcessorPath>
+                            <groupId>org.jboss.logging</groupId>
+                            <artifactId>jboss-logging-processor</artifactId>
+                            <version>${version.jboss.logging.tools}</version>
+                        </annotationProcessorPath>
+                    </annotationProcessorPaths>
+                    <compilerArgs>
+                        <!-- This is for SVM dependency -->
+                        <compilerArg>--add-reads=org.jboss.threads=ALL-UNNAMED</compilerArg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
             <plugin>
@@ -193,6 +209,7 @@
                         <jboss.threads.eqe.unlimited-queue>${jboss.threads.eqe.unlimited-queue}</jboss.threads.eqe.unlimited-queue>
                         <jboss.threads.eqe.register-mbean>${jboss.threads.eqe.register-mbean}</jboss.threads.eqe.register-mbean>
                     </systemPropertyVariables>
+                    <useModulePath>true</useModulePath>
                 </configuration>
             </plugin>
         </plugins>
