@@ -1,18 +1,21 @@
 package org.jboss.threads;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 public class EnhancedQueueExecutorTest {
     private int coreSize = 3;
@@ -39,6 +42,93 @@ public class EnhancedQueueExecutorTest {
                 e.printStackTrace();
             }
         }
+    }
+
+    @Test
+    public void testMaximumQueueSize() throws InterruptedException {
+        var builder = (new EnhancedQueueExecutor.Builder())
+                .setMaximumQueueSize(1)
+                .setCorePoolSize(1)
+                .setMaximumPoolSize(1);
+        assertTrue(builder.getQueueLimited());
+        var executor = builder.build();
+        CountDownLatch executeEnqueuedTask = new CountDownLatch(1);
+        AtomicInteger count = new AtomicInteger();
+        CountDownLatch enqueuedTask = new CountDownLatch(1);
+        CountDownLatch executedEnqueuedTask = new CountDownLatch(1);
+        executor.execute(() -> {
+            count.incrementAndGet();
+            try {
+                enqueuedTask.countDown();
+                executeEnqueuedTask.await();
+            } catch (InterruptedException ignored) {
+            }
+        });
+        enqueuedTask.await();
+        assertEquals(1, count.get());
+        assertEquals(0, executor.getQueueSize());
+        // this is going to cause the queue size to be == 1
+        executor.execute(() -> {
+            count.incrementAndGet();
+            executedEnqueuedTask.countDown();
+        });
+        assertEquals(1, count.get());
+        assertEquals(1, executor.getQueueSize());
+        try {
+            executor.execute(count::incrementAndGet);
+            fail("Expected RejectedExecutionException");
+        } catch (RejectedExecutionException e) {
+            // expected
+        }
+        assertEquals(1, count.get());
+        assertEquals(1, executor.getQueueSize());
+        executeEnqueuedTask.countDown();
+        executedEnqueuedTask.await();
+        assertEquals(2, count.get());
+        assertEquals(0, executor.getQueueSize());
+        executor.shutdown();
+    }
+
+    @Test
+    public void testNoQueueLimit() throws InterruptedException {
+        var builder = (new EnhancedQueueExecutor.Builder())
+                .setQueueLimited(false)
+                .setMaximumQueueSize(1)
+                .setCorePoolSize(1)
+                .setMaximumPoolSize(1);
+        assertFalse(builder.getQueueLimited());
+        var executor = builder.build();
+        assertEquals(Integer.MAX_VALUE, executor.getMaximumQueueSize());
+        CountDownLatch executeEnqueuedTasks = new CountDownLatch(1);
+        AtomicInteger count = new AtomicInteger();
+        CountDownLatch enqueuedTask = new CountDownLatch(1);
+        CountDownLatch executedEnqueuedTasks = new CountDownLatch(2);
+        executor.execute(() -> {
+            count.incrementAndGet();
+            try {
+                enqueuedTask.countDown();
+                executeEnqueuedTasks.await();
+            } catch (InterruptedException ignored) {
+            }
+        });
+        enqueuedTask.await();
+        executor.execute(() -> {
+            count.incrementAndGet();
+            executedEnqueuedTasks.countDown();
+        });
+        assertEquals(1, count.get());
+        assertEquals(-1, executor.getQueueSize());
+        executor.execute(() -> {
+            count.incrementAndGet();
+            executedEnqueuedTasks.countDown();
+        });
+        assertEquals(1, count.get());
+        assertEquals(-1, executor.getQueueSize());
+        executeEnqueuedTasks.countDown();
+        executedEnqueuedTasks.await();
+        assertEquals(3, count.get());
+        assertEquals(-1, executor.getQueueSize());
+        executor.shutdown();
     }
 
     /**

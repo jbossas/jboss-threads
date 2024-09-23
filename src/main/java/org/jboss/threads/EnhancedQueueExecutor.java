@@ -292,6 +292,12 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     @SuppressWarnings("unused") // used by field updater
     volatile int peakQueueSize;
 
+    // =======================================================
+    // Size and queue limit tracking
+    // =======================================================
+
+    private final boolean queueLimited;
+
     private final LongAdder submittedTaskCounter = new LongAdder();
     private final LongAdder completedTaskCounter = new LongAdder();
     private final LongAdder rejectedTaskCounter = new LongAdder();
@@ -423,7 +429,9 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         // thread stat
         setThreadStatusPlain(withCoreSize(withMaxSize(withAllowCoreTimeout(0L, builder.allowsCoreThreadTimeOut()), maxSize), coreSize));
         timeoutNanos = TimeUtil.clampedPositiveNanos(keepAliveTime);
-        setQueueSizePlain(withMaxQueueSize(withCurrentQueueSize(0L, 0), builder.getMaximumQueueSize()));
+        this.queueLimited = builder.getQueueLimited();
+        final int maximumQueueSize = getQueueLimited() ? builder.getMaximumQueueSize() : Integer.MAX_VALUE;
+        setQueueSizePlain(withMaxQueueSize(withCurrentQueueSize(0L, 0), maximumQueueSize));
         mxBean = new MXBeanImpl();
         if (! DISABLE_MBEAN && builder.isRegisterMBean()) {
             this.acc = getContext();
@@ -434,6 +442,10 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             handle = null;
             this.acc = null;
         }
+    }
+
+    private boolean getQueueLimited() {
+        return !NO_QUEUE_LIMIT && queueLimited;
     }
 
     static final class MBeanRegisterAction implements PrivilegedAction<ObjectInstance> {
@@ -479,6 +491,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         private boolean registerMBean = REGISTER_MBEAN;
         private String mBeanName;
         private ContextHandler<?> contextHandler = ContextHandler.NONE;
+        private boolean queueLimited = true;
 
         /**
          * Construct a new instance.
@@ -702,7 +715,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
         /**
          * Set the maximum queue size.
-         * This has no impact when {@code jboss.threads.eqe.unlimited-queue} is set.
+         * This has no impact when {@code jboss.threads.eqe.unlimited-queue} is set or
+         * {@link #setQueueLimited(boolean)} is set to {@code false}.
          *
          * @param maxQueueSize the maximum queue size (must be ≥ 0)
          * @return this builder
@@ -712,6 +726,24 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             Assert.checkMinimumParameter("maxQueueSize", 0, maxQueueSize);
             Assert.checkMaximumParameter("maxQueueSize", Integer.MAX_VALUE, maxQueueSize);
             this.maxQueueSize = maxQueueSize;
+            return this;
+        }
+
+        /**
+         * @return {@code false} if the queue limit and size tracking are suppressed for performance, {@code true} otherwise
+         */
+        public boolean getQueueLimited() {
+            return queueLimited;
+        }
+
+        /**
+         * It set to {@code false} suppress queue limit and size tracking for performance.<br>
+         * It has no effects if {@code jboss.threads.eqe.unlimited-queue} is set.
+         *
+         * @return this builder
+         */
+        public Builder setQueueLimited(final boolean limit) {
+            this.queueLimited = limit;
             return this;
         }
 
@@ -896,7 +928,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 if (compareAndSetHead(head, taskNode)) {
                     // save from GC nepotism
                     head.setNextOrdered(head);
-                    if (! NO_QUEUE_LIMIT) decreaseQueueSize();
+                    if (getQueueLimited()) decreaseQueueSize();
                     head = taskNode;
                     list.add(taskNode.task.handoff());
                 }
@@ -1366,7 +1398,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     public void setMaximumQueueSize(final int maxQueueSize) {
         Assert.checkMinimumParameter("maxQueueSize", 0, maxQueueSize);
         Assert.checkMaximumParameter("maxQueueSize", Integer.MAX_VALUE, maxQueueSize);
-        if (NO_QUEUE_LIMIT) return;
+        if (!getQueueLimited()) return;
         long oldVal;
         do {
             oldVal = getQueueSizeVolatile();
@@ -1427,10 +1459,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     /**
      * Get an estimate of the current queue size.
      *
-     * @return an estimate of the current queue size or -1 when {@code jboss.threads.eqe.unlimited-queue} is enabled
+     * @return an estimate of the current queue size or -1 when {@code jboss.threads.eqe.unlimited-queue} is enabled or
+     * {@link Builder#setQueueLimited(boolean)} is set to {@code false}
      */
     public int getQueueSize() {
-        return NO_QUEUE_LIMIT ? -1 : currentQueueSizeOf(getQueueSizeVolatile());
+        return !getQueueLimited() ? -1 : currentQueueSizeOf(getQueueSizeVolatile());
     }
 
     /**
@@ -1455,10 +1488,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      * Get an estimate of the peak size of the queue.
      *
      * return an estimate of the peak size of the queue or -1 when {@code jboss.threads.eqe.statistics}
-     * is disabled or {@code jboss.threads.eqe.unlimited-queue} is enabled
+     * is disabled or {@code jboss.threads.eqe.unlimited-queue} is enabled or {@link Builder#setQueueLimited(boolean)}
+     * is set to {@code false}
      */
     public int getLargestQueueSize() {
-        return UPDATE_STATISTICS && !NO_QUEUE_LIMIT ? peakQueueSize : -1;
+        return UPDATE_STATISTICS && getQueueLimited() ? peakQueueSize : -1;
     }
 
     /**
@@ -1660,7 +1694,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                             // to save dragging head::next into the old generation.
                             // Clean-up cannot just null out next
                             head.setNextOrdered(head);
-                            if (!NO_QUEUE_LIMIT) decreaseQueueSize();
+                            if (getQueueLimited()) decreaseQueueSize();
                             return taskNode;
                         }
                     } else if (headNext instanceof PoolThreadNode || headNext == null) {
@@ -1841,7 +1875,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 }
                 assert tr == AT_NO;
                 // no; try to enqueue
-                if (!NO_QUEUE_LIMIT && !increaseQueueSize()) {
+                if (getQueueLimited() && !increaseQueueSize()) {
                     // queue is full
                     // OK last effort to create a thread, disregarding growth limit
                     tr = tryAllocateThread(0.0f);
@@ -1875,7 +1909,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                     return EXE_OK;
                 }
                 // we failed; we have to drop the queue size back down again to compensate before we can retry
-                if (!NO_QUEUE_LIMIT) decreaseQueueSize();
+                if (getQueueLimited()) decreaseQueueSize();
             } else if (tailNext instanceof PoolThreadNode) {
                 final QNode tailNextNext = tailNext.getNext();
                 // state change ex1:
@@ -2567,11 +2601,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         }
 
         public boolean isQueueBounded() {
-            return ! NO_QUEUE_LIMIT;
+            return getQueueLimited();
         }
 
         public boolean isQueueSizeModifiable() {
-            return ! NO_QUEUE_LIMIT;
+            return getQueueLimited();
         }
 
         public boolean isShutdown() {
