@@ -333,16 +333,18 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 // guess
                 cacheLine = 64;
             }
+            // cpu spatial prefetcher can drag 2 cache-lines at once into L2
+            int pad = cacheLine > 128 ? cacheLine : 128;
             int longScale = unsafe.arrayIndexScale(long[].class);
             int objScale = unsafe.arrayIndexScale(Object[].class);
             // these fields are in units of array scale
-            unsharedObjectsSize = cacheLine / objScale * (numUnsharedObjects + 1);
-            unsharedLongsSize = cacheLine / longScale * (numUnsharedLongs + 1);
+            unsharedObjectsSize = pad / objScale * (numUnsharedObjects + 1);
+            unsharedLongsSize = pad / longScale * (numUnsharedLongs + 1);
             // these fields are in bytes
-            headOffset = unsafe.arrayBaseOffset(Object[].class) + cacheLine;
-            tailOffset = unsafe.arrayBaseOffset(Object[].class) + cacheLine * 2;
-            threadStatusOffset = unsafe.arrayBaseOffset(long[].class) + cacheLine;
-            queueSizeOffset = unsafe.arrayBaseOffset(long[].class) + cacheLine * 2;
+            headOffset = unsafe.arrayBaseOffset(Object[].class) + pad;
+            tailOffset = unsafe.arrayBaseOffset(Object[].class) + pad * 2;
+            threadStatusOffset = unsafe.arrayBaseOffset(long[].class) + pad;
+            queueSizeOffset = unsafe.arrayBaseOffset(long[].class) + pad * 2;
         }
     }
 
