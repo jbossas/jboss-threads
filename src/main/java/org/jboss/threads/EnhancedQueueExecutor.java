@@ -217,7 +217,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      *     This is the removal point for tasks (and the insertion point for waiting threads).</li>
      * </ul>
      */
-    final Object[] unsharedObjects = new Object[RuntimeFields.unsharedObjectsSize];
+    final TaskNode[] unsharedTaskNodes = new TaskNode[RuntimeFields.unsharedTaskNodesSize];
 
     /**
      * Unshared long fields (indexes are relative to units of cache line size):
@@ -324,7 +324,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     // GraalVM should initialize this class at run time
     private static final class RuntimeFields {
-        private static final int unsharedObjectsSize;
+        private static final int unsharedTaskNodesSize;
         private static final int unsharedLongsSize;
 
         private static final long headOffset;
@@ -342,13 +342,13 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             // cpu spatial prefetcher can drag 2 cache-lines at once into L2
             int pad = cacheLine > 128 ? cacheLine : 128;
             int longScale = unsafe.arrayIndexScale(long[].class);
-            int objScale = unsafe.arrayIndexScale(Object[].class);
+            int taskNodeScale = unsafe.arrayIndexScale(TaskNode[].class);
             // these fields are in units of array scale
-            unsharedObjectsSize = pad / objScale * (numUnsharedObjects + 1);
+            unsharedTaskNodesSize = pad / taskNodeScale * (numUnsharedObjects + 1);
             unsharedLongsSize = pad / longScale * (numUnsharedLongs + 1);
             // these fields are in bytes
-            headOffset = unsafe.arrayBaseOffset(Object[].class) + pad;
-            tailOffset = unsafe.arrayBaseOffset(Object[].class) + pad * 2;
+            headOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad;
+            tailOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad * 2;
             threadStatusOffset = unsafe.arrayBaseOffset(long[].class) + pad;
             queueSizeOffset = unsafe.arrayBaseOffset(long[].class) + pad * 2;
         }
@@ -2022,29 +2022,29 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     TaskNode getTail() {
-        return (TaskNode) unsafe.getObjectVolatile(unsharedObjects, RuntimeFields.tailOffset);
+        return (TaskNode) unsafe.getObjectVolatile(unsharedTaskNodes, RuntimeFields.tailOffset);
     }
 
     TaskNode setTailPlain(TaskNode tail) {
-        unsafe.putObject(unsharedObjects, RuntimeFields.tailOffset, tail);
+        unsafe.putObject(unsharedTaskNodes, RuntimeFields.tailOffset, tail);
         return tail;
     }
 
     boolean compareAndSetTail(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
-        return getTail() == expect && unsafe.compareAndSwapObject(unsharedObjects, RuntimeFields.tailOffset, expect, update);
+        return getTail() == expect && unsafe.compareAndSwapObject(unsharedTaskNodes, RuntimeFields.tailOffset, expect, update);
     }
 
     TaskNode getHead() {
-        return (TaskNode) unsafe.getObjectVolatile(unsharedObjects, RuntimeFields.headOffset);
+        return (TaskNode) unsafe.getObjectVolatile(unsharedTaskNodes, RuntimeFields.headOffset);
     }
 
     TaskNode setHeadPlain(TaskNode head) {
-        unsafe.putObject(unsharedObjects, RuntimeFields.headOffset, head);
+        unsafe.putObject(unsharedTaskNodes, RuntimeFields.headOffset, head);
         return head;
     }
 
     boolean compareAndSetHead(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
-        return unsafe.compareAndSwapObject(unsharedObjects, RuntimeFields.headOffset, expect, update);
+        return unsafe.compareAndSwapObject(unsharedTaskNodes, RuntimeFields.headOffset, expect, update);
     }
 
     long getThreadStatus() {
