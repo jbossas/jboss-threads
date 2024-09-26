@@ -1688,7 +1688,17 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 // headNext == head can happen if another consumer has already consumed head:
                 // retry with a fresh head
                 if (headNext != head) {
-                    if (headNext instanceof TaskNode) {
+                    if (headNext instanceof PoolThreadNode || headNext == null) {
+                        nextPoolThreadNode.setNextRelaxed(headNext);
+                        if (head.compareAndSetNext(headNext, nextPoolThreadNode)) {
+                            return nextPoolThreadNode;
+                        } else if (headNext != null) {
+                            // GC Nepotism:
+                            // save dragging headNext into old generation
+                            // (although being a PoolThreadNode it won't make a big difference)
+                            nextPoolThreadNode.setNextRelaxed(null);
+                        }
+                    } else if (headNext instanceof TaskNode) {
                         TaskNode taskNode = (TaskNode) headNext;
                         if (compareAndSetHead(head, taskNode)) {
                             // save from GC Nepotism: generational GCs don't like
@@ -1698,16 +1708,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                             head.setNextOrdered(head);
                             if (getQueueLimited()) decreaseQueueSize();
                             return taskNode;
-                        }
-                    } else if (headNext instanceof PoolThreadNode || headNext == null) {
-                        nextPoolThreadNode.setNextRelaxed(headNext);
-                        if (head.compareAndSetNext(headNext, nextPoolThreadNode)) {
-                            return nextPoolThreadNode;
-                        } else if (headNext != null) {
-                            // GC Nepotism:
-                            // save dragging headNext into old generation
-                            // (although being a PoolThreadNode it won't make a big difference)
-                            nextPoolThreadNode.setNextRelaxed(null);
                         }
                     } else {
                         assert headNext instanceof TerminateWaiterNode;
