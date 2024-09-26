@@ -1601,8 +1601,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 } else if (node == nextPoolThreadNode) {
                     // pool thread node was added
                     final PoolThreadNode newNode = nextPoolThreadNode;
-                    // nextPoolThreadNode has been added to the queue, a new node is required for next time.
-                    nextPoolThreadNode = new PoolThreadNode(currentThread);
                     // at this point, we are registered into the queue
                     long start = System.nanoTime();
                     long elapsed = 0L;
@@ -1613,6 +1611,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                             if (newNode.compareAndSetTask(task, ACCEPTED)) {
                                 // we have a task to run, so run it and then abandon the node
                                 task.run();
+                                // nextPoolThreadNode has been added to the queue, a new node is required for next time.
+                                nextPoolThreadNode = new PoolThreadNode(currentThread);
                                 // rerun outer
                                 continue processingQueue;
                             }
