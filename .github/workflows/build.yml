@@ -27,9 +27,8 @@ jobs:
       with:
         distribution: temurin
         java-version: |
-          11
           17
           21
 
     - name: Build with Maven
-      run: mvn verify -ntp -B "-Djava11.home=${{env.JAVA_HOME_11_X64}}${{env.JAVA_HOME_11_ARM64}}" "-Djava17.home=${{env.JAVA_HOME_17_X64}}${{env.JAVA_HOME_17_ARM64}}"
+      run: mvn verify -ntp -B "-Djava17.home=${{env.JAVA_HOME_17_X64}}${{env.JAVA_HOME_17_ARM64}}"
