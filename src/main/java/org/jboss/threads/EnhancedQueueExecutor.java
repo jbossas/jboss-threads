@@ -1591,131 +1591,116 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             // Eagerly allocate a PoolThreadNode for the next time it's needed
             PoolThreadNode nextPoolThreadNode = new PoolThreadNode(currentThread);
             // main loop
-            QNode node;
             processingQueue: for (;;) {
-                node = getOrAddNode(nextPoolThreadNode);
-                if (node instanceof TaskNode) {
-                    // task node was removed
-                    ((TaskNode) node).getAndClearTask().run();
-                    continue;
-                } else if (node == nextPoolThreadNode) {
-                    // pool thread node was added
-                    final PoolThreadNode newNode = nextPoolThreadNode;
-                    // at this point, we are registered into the queue
-                    long start = System.nanoTime();
-                    long elapsed = 0L;
-                    waitingForTask: for (;;) {
-                        Runnable task = newNode.getTask();
-                        assert task != ACCEPTED && task != GAVE_UP && task != null;
-                        if (task != WAITING && task != EXIT) {
-                            if (newNode.compareAndSetTask(task, ACCEPTED)) {
-                                // we have a task to run, so run it and then abandon the node
-                                task.run();
-                                // nextPoolThreadNode has been added to the queue, a new node is required for next time.
-                                nextPoolThreadNode = new PoolThreadNode(currentThread);
-                                // rerun outer
-                                continue processingQueue;
-                            }
-                            // we had a task to run, but we failed to CAS it for some reason, so retry
-                            if (UPDATE_STATISTICS) spinMisses.increment();
-                            continue waitingForTask;
-                        } else {
-                            final long timeoutNanos = EnhancedQueueExecutor.this.timeoutNanos;
-                            long oldVal = getThreadStatus();
-                            if (elapsed >= timeoutNanos || task == EXIT || currentSizeOf(oldVal) > maxSizeOf(oldVal)) {
-                                // try to exit this thread, if we are allowed
-                                if (task == EXIT ||
-                                        isShutdownRequested(oldVal) ||
-                                        isAllowCoreTimeout(oldVal) ||
-                                        currentSizeOf(oldVal) > coreSizeOf(oldVal)
-                                        ) {
-                                    if (newNode.compareAndSetTask(task, GAVE_UP)) {
-                                        for (;;) {
-                                            if (tryDeallocateThread(oldVal)) {
-                                                // clear to exit.
-                                                runningThreads.remove(currentThread);
-                                                return;
+                TaskNode head;
+                QNode headNext;
+                for (;;) {
+                    head = getHead();
+                    headNext = head.getNext();
+                    // headNext == head can happen if another consumer has already consumed head:
+                    // retry with a fresh head
+                    if (headNext != head) {
+                        if (headNext == null || headNext instanceof PoolThreadNode) {
+                            nextPoolThreadNode.setNextRelaxed(headNext);
+                            if (head.compareAndSetNext(headNext, nextPoolThreadNode)) {
+                                // pool thread node was added
+                                final PoolThreadNode newNode = nextPoolThreadNode;
+                                // at this point, we are registered into the queue
+                                long start = System.nanoTime();
+                                long elapsed = 0L;
+                                waitingForTask: for (;;) {
+                                    Runnable task = newNode.getTask();
+                                    assert task != ACCEPTED && task != GAVE_UP && task != null;
+                                    if (task != WAITING && task != EXIT) {
+                                        if (newNode.compareAndSetTask(task, ACCEPTED)) {
+                                            // we have a task to run, so run it and then abandon the node
+                                            task.run();
+                                            // nextPoolThreadNode has been added to the queue, a new node is required for next time.
+                                            nextPoolThreadNode = new PoolThreadNode(currentThread);
+                                            // rerun outer
+                                            continue processingQueue;
+                                        }
+                                        // we had a task to run, but we failed to CAS it for some reason, so retry
+                                        if (UPDATE_STATISTICS) spinMisses.increment();
+                                        continue waitingForTask;
+                                    } else {
+                                        final long timeoutNanos = EnhancedQueueExecutor.this.timeoutNanos;
+                                        long oldVal = getThreadStatus();
+                                        if (elapsed >= timeoutNanos || task == EXIT || currentSizeOf(oldVal) > maxSizeOf(oldVal)) {
+                                            // try to exit this thread, if we are allowed
+                                            if (task == EXIT ||
+                                                    isShutdownRequested(oldVal) ||
+                                                    isAllowCoreTimeout(oldVal) ||
+                                                    currentSizeOf(oldVal) > coreSizeOf(oldVal)
+                                                    ) {
+                                                if (newNode.compareAndSetTask(task, GAVE_UP)) {
+                                                    for (;;) {
+                                                        if (tryDeallocateThread(oldVal)) {
+                                                            // clear to exit.
+                                                            runningThreads.remove(currentThread);
+                                                            return;
+                                                        }
+                                                        if (UPDATE_STATISTICS) spinMisses.increment();
+                                                        oldVal = getThreadStatus();
+                                                    }
+                                                    //throw Assert.unreachableCode();
+                                                }
+                                                continue waitingForTask;
+                                            } else {
+                                                if (elapsed >= timeoutNanos) {
+                                                    newNode.park(EnhancedQueueExecutor.this);
+                                                } else {
+                                                    newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                                }
+                                                Thread.interrupted();
+                                                elapsed = System.nanoTime() - start;
+                                                // retry inner
+                                                continue waitingForTask;
                                             }
-                                            if (UPDATE_STATISTICS) spinMisses.increment();
-                                            oldVal = getThreadStatus();
+                                            //throw Assert.unreachableCode();
+                                        } else {
+                                            assert task == WAITING;
+                                            newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                            Thread.interrupted();
+                                            elapsed = System.nanoTime() - start;
+                                            // retry inner
+                                            continue waitingForTask;
                                         }
                                         //throw Assert.unreachableCode();
                                     }
-                                    continue waitingForTask;
-                                } else {
-                                    if (elapsed >= timeoutNanos) {
-                                        newNode.park(EnhancedQueueExecutor.this);
-                                    } else {
-                                        newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
-                                    }
-                                    Thread.interrupted();
-                                    elapsed = System.nanoTime() - start;
-                                    // retry inner
-                                    continue waitingForTask;
-                                }
+                                    //throw Assert.unreachableCode();
+                                } // :waitingForTask
                                 //throw Assert.unreachableCode();
-                            } else {
-                                assert task == WAITING;
-                                newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
-                                Thread.interrupted();
-                                elapsed = System.nanoTime() - start;
-                                // retry inner
-                                continue waitingForTask;
+                            } else if (headNext != null) {
+                                // GC Nepotism:
+                                // save dragging headNext into old generation
+                                // (although being a PoolThreadNode it won't make a big difference)
+                                nextPoolThreadNode.setNextRelaxed(null);
                             }
-                            //throw Assert.unreachableCode();
+                        } else if (headNext instanceof TaskNode taskNode) {
+                            if (compareAndSetHead(head, taskNode)) {
+                                // save from GC Nepotism: generational GCs don't like
+                                // cross-generational references, so better to "clean-up" head::next
+                                // to save dragging head::next into the old generation.
+                                // Clean-up cannot just null out next
+                                head.setNextOrdered(head);
+                                if (getQueueLimited()) decreaseQueueSize();
+                                // task node was removed
+                                taskNode.getAndClearTask().run();
+                                continue;
+                            }
+                        } else {
+                            assert headNext instanceof TerminateWaiterNode;
+                            // we're shutting down!
+                            runningThreads.remove(currentThread);
+                            deallocateThread();
+                            return;
                         }
-                        //throw Assert.unreachableCode();
-                    } // :waitingForTask
-                    //throw Assert.unreachableCode();
-                } else {
-                    assert node instanceof TerminateWaiterNode;
-                    // we're shutting down!
-                    runningThreads.remove(currentThread);
-                    deallocateThread();
-                    return;
+                    }
+                    if (UPDATE_STATISTICS) EnhancedQueueExecutor.this.spinMisses.increment();
                 }
-                //throw Assert.unreachableCode();
             } // :processingQueue
             //throw Assert.unreachableCode();
-        }
-
-        private QNode getOrAddNode(PoolThreadNode nextPoolThreadNode) {
-            TaskNode head;
-            QNode headNext;
-            for (;;) {
-                head = getHead();
-                headNext = head.getNext();
-                // headNext == head can happen if another consumer has already consumed head:
-                // retry with a fresh head
-                if (headNext != head) {
-                    if (headNext instanceof PoolThreadNode || headNext == null) {
-                        nextPoolThreadNode.setNextRelaxed(headNext);
-                        if (head.compareAndSetNext(headNext, nextPoolThreadNode)) {
-                            return nextPoolThreadNode;
-                        } else if (headNext != null) {
-                            // GC Nepotism:
-                            // save dragging headNext into old generation
-                            // (although being a PoolThreadNode it won't make a big difference)
-                            nextPoolThreadNode.setNextRelaxed(null);
-                        }
-                    } else if (headNext instanceof TaskNode) {
-                        TaskNode taskNode = (TaskNode) headNext;
-                        if (compareAndSetHead(head, taskNode)) {
-                            // save from GC Nepotism: generational GCs don't like
-                            // cross-generational references, so better to "clean-up" head::next
-                            // to save dragging head::next into the old generation.
-                            // Clean-up cannot just null out next
-                            head.setNextOrdered(head);
-                            if (getQueueLimited()) decreaseQueueSize();
-                            return taskNode;
-                        }
-                    } else {
-                        assert headNext instanceof TerminateWaiterNode;
-                        return headNext;
-                    }
-                }
-                if (UPDATE_STATISTICS) spinMisses.increment();
-            }
         }
 
         private Runnable getAndClearInitialTask() {
