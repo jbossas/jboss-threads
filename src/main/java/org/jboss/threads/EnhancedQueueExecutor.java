@@ -1597,7 +1597,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     private void runThreadBody() {
         final LongAdder spinMisses = this.spinMisses;
-        TaskNode[] unsharedTaskNodes = this.unsharedTaskNodes;
+        final TaskNode[] unsharedTaskNodes = this.unsharedTaskNodes;
         // Eagerly allocate a PoolThreadNode for the next time it's needed
         PoolThreadNode nextPoolThreadNode = new PoolThreadNode(currentThread());
         // main loop
@@ -1634,7 +1634,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                                     if (UPDATE_STATISTICS) spinMisses.increment();
                                     continue waitingForTask;
                                 } else {
-                                    final long timeoutNanos = EnhancedQueueExecutor.this.timeoutNanos;
+                                    final long timeoutNanos = this.timeoutNanos;
                                     long oldVal = getThreadStatus();
                                     if (elapsed >= timeoutNanos || task == EXIT || currentSizeOf(oldVal) > maxSizeOf(oldVal)) {
                                         // try to exit this thread, if we are allowed
@@ -1658,9 +1658,9 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                                             continue waitingForTask;
                                         } else {
                                             if (elapsed >= timeoutNanos) {
-                                                newNode.park(EnhancedQueueExecutor.this);
+                                                newNode.park(this);
                                             } else {
-                                                newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                                newNode.park(this, timeoutNanos - elapsed);
                                             }
                                             Thread.interrupted();
                                             elapsed = System.nanoTime() - start;
@@ -1670,7 +1670,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                                         //throw Assert.unreachableCode();
                                     } else {
                                         assert task == WAITING;
-                                        newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
+                                        newNode.park(this, timeoutNanos - elapsed);
                                         Thread.interrupted();
                                         elapsed = System.nanoTime() - start;
                                         // retry inner
@@ -1707,7 +1707,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                         return;
                     }
                 }
-                if (UPDATE_STATISTICS) EnhancedQueueExecutor.this.spinMisses.increment();
+                if (UPDATE_STATISTICS) this.spinMisses.increment();
             }
         } // :processingQueue
         //throw Assert.unreachableCode();
