@@ -916,18 +916,19 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     public List<Runnable> shutdownNow() {
         shutdown(true);
         final ArrayList<Runnable> list = new ArrayList<>();
-        TaskNode head = getHead();
+        TaskNode[] unsharedTaskNodes = this.unsharedTaskNodes;
+        TaskNode head = getHead(unsharedTaskNodes);
         QNode headNext;
         for (;;) {
             headNext = head.getNext();
             if (headNext == head) {
                 // a racing consumer has already consumed it (and moved head)
-                head = getHead();
+                head = getHead(unsharedTaskNodes);
                 continue;
             }
             if (headNext instanceof TaskNode) {
                 TaskNode taskNode = (TaskNode) headNext;
-                if (compareAndSetHead(head, taskNode)) {
+                if (compareAndSetHead(unsharedTaskNodes, head, taskNode)) {
                     // save from GC nepotism
                     head.setNextOrdered(head);
                     if (getQueueLimited()) decreaseQueueSize();
@@ -1596,6 +1597,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     private void runThreadBody() {
         final LongAdder spinMisses = this.spinMisses;
+        TaskNode[] unsharedTaskNodes = this.unsharedTaskNodes;
         // Eagerly allocate a PoolThreadNode for the next time it's needed
         PoolThreadNode nextPoolThreadNode = new PoolThreadNode(currentThread());
         // main loop
@@ -1603,7 +1605,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             TaskNode head;
             QNode headNext;
             for (;;) {
-                head = getHead();
+                head = getHead(unsharedTaskNodes);
                 headNext = head.getNext();
                 // headNext == head can happen if another consumer has already consumed head:
                 // retry with a fresh head
@@ -1686,7 +1688,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                             nextPoolThreadNode.setNextRelaxed(null);
                         }
                     } else if (headNext instanceof TaskNode taskNode) {
-                        if (compareAndSetHead(head, taskNode)) {
+                        if (compareAndSetHead(unsharedTaskNodes, head, taskNode)) {
                             // save from GC Nepotism: generational GCs don't like
                             // cross-generational references, so better to "clean-up" head::next
                             // to save dragging head::next into the old generation.
@@ -2020,7 +2022,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         return getTail() == expect && unsafe.compareAndSwapObject(unsharedTaskNodes, RuntimeFields.tailOffset, expect, update);
     }
 
-    TaskNode getHead() {
+    TaskNode getHead(final TaskNode[] unsharedTaskNodes) {
         return (TaskNode) unsafe.getObjectVolatile(unsharedTaskNodes, RuntimeFields.headOffset);
     }
 
@@ -2029,7 +2031,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         return head;
     }
 
-    boolean compareAndSetHead(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
+    boolean compareAndSetHead(final TaskNode[] unsharedTaskNodes, final TaskNode expect, final TaskNode update) {
         return unsafe.compareAndSwapObject(unsharedTaskNodes, RuntimeFields.headOffset, expect, update);
     }
 
