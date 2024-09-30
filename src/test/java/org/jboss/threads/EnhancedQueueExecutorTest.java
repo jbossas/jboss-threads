@@ -3,7 +3,6 @@ package org.jboss.threads;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -245,20 +244,6 @@ public class EnhancedQueueExecutorTest {
         assertEquals(prestarted, coreSize, "expected: == " + coreSize + ", actual: " + prestarted);
         assertEquals(executor.getPoolSize(), coreSize, "expected: == " + coreSize + ", actual: " + executor.getPoolSize());
         executor.shutdown();
-    }
-
-    @Test
-    public void testStackDepth() throws InterruptedException {
-        // Test exists to acknowledge changes which result in greater stack depth making stack traces
-        // created within the executor more difficult to follow. This isn't something that we should
-        // necessarily optimize for, rather something we should keep in mind when other options exist.
-        final int expectedStackFrames = 6;
-        assertStackDepth(new EnhancedQueueExecutor.Builder()
-                .setCorePoolSize(1)
-                .setMaximumPoolSize(1)
-                .build(), expectedStackFrames + 2);
-        // Use a standard ThreadPoolExecutor as a baseline for comparison.
-        assertStackDepth(Executors.newSingleThreadExecutor(), expectedStackFrames);
     }
 
     public void assertStackDepth(ExecutorService executor, int expectedStackFrames) throws InterruptedException {

@@ -217,7 +217,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
      *     This is the removal point for tasks (and the insertion point for waiting threads).</li>
      * </ul>
      */
-    final Object[] unsharedObjects = new Object[RuntimeFields.unsharedObjectsSize];
+    final TaskNode[] unsharedTaskNodes = new TaskNode[RuntimeFields.unsharedTaskNodesSize];
 
     /**
      * Unshared long fields (indexes are relative to units of cache line size):
@@ -324,7 +324,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
     // GraalVM should initialize this class at run time
     private static final class RuntimeFields {
-        private static final int unsharedObjectsSize;
+        private static final int unsharedTaskNodesSize;
         private static final int unsharedLongsSize;
 
         private static final long headOffset;
@@ -342,13 +342,13 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             // cpu spatial prefetcher can drag 2 cache-lines at once into L2
             int pad = cacheLine > 128 ? cacheLine : 128;
             int longScale = unsafe.arrayIndexScale(long[].class);
-            int objScale = unsafe.arrayIndexScale(Object[].class);
+            int taskNodeScale = unsafe.arrayIndexScale(TaskNode[].class);
             // these fields are in units of array scale
-            unsharedObjectsSize = pad / objScale * (numUnsharedObjects + 1);
+            unsharedTaskNodesSize = pad / taskNodeScale * (numUnsharedObjects + 1);
             unsharedLongsSize = pad / longScale * (numUnsharedLongs + 1);
             // these fields are in bytes
-            headOffset = unsafe.arrayBaseOffset(Object[].class) + pad;
-            tailOffset = unsafe.arrayBaseOffset(Object[].class) + pad * 2;
+            headOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad;
+            tailOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad * 2;
             threadStatusOffset = unsafe.arrayBaseOffset(long[].class) + pad;
             queueSizeOffset = unsafe.arrayBaseOffset(long[].class) + pad * 2;
         }
@@ -916,18 +916,19 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     public List<Runnable> shutdownNow() {
         shutdown(true);
         final ArrayList<Runnable> list = new ArrayList<>();
-        TaskNode head = getHead();
+        TaskNode[] unsharedTaskNodes = this.unsharedTaskNodes;
+        TaskNode head = getHead(unsharedTaskNodes);
         QNode headNext;
         for (;;) {
             headNext = head.getNext();
             if (headNext == head) {
                 // a racing consumer has already consumed it (and moved head)
-                head = getHead();
+                head = getHead(unsharedTaskNodes);
                 continue;
             }
             if (headNext instanceof TaskNode) {
                 TaskNode taskNode = (TaskNode) headNext;
-                if (compareAndSetHead(head, taskNode)) {
+                if (compareAndSetHead(unsharedTaskNodes, head, taskNode)) {
                     // save from GC nepotism
                     head.setNextOrdered(head);
                     if (getQueueLimited()) decreaseQueueSize();
@@ -1581,148 +1582,135 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
          * exit it is removed.
          */
         public void run() {
-            final Thread currentThread = Thread.currentThread();
-            final LongAdder spinMisses = EnhancedQueueExecutor.this.spinMisses;
-            runningThreads.add(currentThread);
+            runningThreads.add(currentThread());
 
             // run the initial task
-            nullToNop(getAndClearInitialTask()).run();
+            Runnable initial = initialTask;
+            if (initial != null) {
+                this.initialTask = null;
+                initial.run();
+            }
 
-            // Eagerly allocate a PoolThreadNode for the next time it's needed
-            PoolThreadNode nextPoolThreadNode = new PoolThreadNode(currentThread);
-            // main loop
-            QNode node;
-            processingQueue: for (;;) {
-                node = getOrAddNode(nextPoolThreadNode);
-                if (node instanceof TaskNode) {
-                    // task node was removed
-                    ((TaskNode) node).getAndClearTask().run();
-                    continue;
-                } else if (node == nextPoolThreadNode) {
-                    // pool thread node was added
-                    final PoolThreadNode newNode = nextPoolThreadNode;
-                    // nextPoolThreadNode has been added to the queue, a new node is required for next time.
-                    nextPoolThreadNode = new PoolThreadNode(currentThread);
-                    // at this point, we are registered into the queue
-                    long start = System.nanoTime();
-                    long elapsed = 0L;
-                    waitingForTask: for (;;) {
-                        Runnable task = newNode.getTask();
-                        assert task != ACCEPTED && task != GAVE_UP && task != null;
-                        if (task != WAITING && task != EXIT) {
-                            if (newNode.compareAndSetTask(task, ACCEPTED)) {
-                                // we have a task to run, so run it and then abandon the node
-                                task.run();
-                                // rerun outer
-                                continue processingQueue;
-                            }
-                            // we had a task to run, but we failed to CAS it for some reason, so retry
-                            if (UPDATE_STATISTICS) spinMisses.increment();
-                            continue waitingForTask;
-                        } else {
-                            final long timeoutNanos = EnhancedQueueExecutor.this.timeoutNanos;
-                            long oldVal = getThreadStatus();
-                            if (elapsed >= timeoutNanos || task == EXIT || currentSizeOf(oldVal) > maxSizeOf(oldVal)) {
-                                // try to exit this thread, if we are allowed
-                                if (task == EXIT ||
-                                        isShutdownRequested(oldVal) ||
-                                        isAllowCoreTimeout(oldVal) ||
-                                        currentSizeOf(oldVal) > coreSizeOf(oldVal)
-                                        ) {
-                                    if (newNode.compareAndSetTask(task, GAVE_UP)) {
-                                        for (;;) {
-                                            if (tryDeallocateThread(oldVal)) {
-                                                // clear to exit.
-                                                runningThreads.remove(currentThread);
-                                                return;
-                                            }
-                                            if (UPDATE_STATISTICS) spinMisses.increment();
-                                            oldVal = getThreadStatus();
-                                        }
-                                        //throw Assert.unreachableCode();
-                                    }
-                                    continue waitingForTask;
-                                } else {
-                                    if (elapsed >= timeoutNanos) {
-                                        newNode.park(EnhancedQueueExecutor.this);
-                                    } else {
-                                        newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
-                                    }
-                                    Thread.interrupted();
-                                    elapsed = System.nanoTime() - start;
-                                    // retry inner
-                                    continue waitingForTask;
-                                }
-                                //throw Assert.unreachableCode();
-                            } else {
-                                assert task == WAITING;
-                                newNode.park(EnhancedQueueExecutor.this, timeoutNanos - elapsed);
-                                Thread.interrupted();
-                                elapsed = System.nanoTime() - start;
-                                // retry inner
-                                continue waitingForTask;
-                            }
-                            //throw Assert.unreachableCode();
-                        }
-                        //throw Assert.unreachableCode();
-                    } // :waitingForTask
-                    //throw Assert.unreachableCode();
-                } else {
-                    assert node instanceof TerminateWaiterNode;
-                    // we're shutting down!
-                    runningThreads.remove(currentThread);
-                    deallocateThread();
-                    return;
-                }
-                //throw Assert.unreachableCode();
-            } // :processingQueue
-            //throw Assert.unreachableCode();
+            runThreadBody();
         }
+    }
 
-        private QNode getOrAddNode(PoolThreadNode nextPoolThreadNode) {
+    private void runThreadBody() {
+        final LongAdder spinMisses = this.spinMisses;
+        final TaskNode[] unsharedTaskNodes = this.unsharedTaskNodes;
+        // Eagerly allocate a PoolThreadNode for the next time it's needed
+        PoolThreadNode nextPoolThreadNode = new PoolThreadNode(currentThread());
+        // main loop
+        processingQueue: for (;;) {
             TaskNode head;
             QNode headNext;
             for (;;) {
-                head = getHead();
+                head = getHead(unsharedTaskNodes);
                 headNext = head.getNext();
                 // headNext == head can happen if another consumer has already consumed head:
                 // retry with a fresh head
                 if (headNext != head) {
-                    if (headNext instanceof TaskNode) {
-                        TaskNode taskNode = (TaskNode) headNext;
-                        if (compareAndSetHead(head, taskNode)) {
-                            // save from GC Nepotism: generational GCs don't like
-                            // cross-generational references, so better to "clean-up" head::next
-                            // to save dragging head::next into the old generation.
-                            // Clean-up cannot just null out next
-                            head.setNextOrdered(head);
-                            if (getQueueLimited()) decreaseQueueSize();
-                            return taskNode;
-                        }
-                    } else if (headNext instanceof PoolThreadNode || headNext == null) {
+                    if (headNext == null || headNext instanceof PoolThreadNode) {
                         nextPoolThreadNode.setNextRelaxed(headNext);
                         if (head.compareAndSetNext(headNext, nextPoolThreadNode)) {
-                            return nextPoolThreadNode;
+                            // pool thread node was added
+                            final PoolThreadNode newNode = nextPoolThreadNode;
+                            // at this point, we are registered into the queue
+                            long start = System.nanoTime();
+                            long elapsed = 0L;
+                            waitingForTask: for (;;) {
+                                Runnable task = newNode.getTask();
+                                assert task != ACCEPTED && task != GAVE_UP && task != null;
+                                if (task != WAITING && task != EXIT) {
+                                    if (newNode.compareAndSetTask(task, ACCEPTED)) {
+                                        // we have a task to run, so run it and then abandon the node
+                                        task.run();
+                                        // nextPoolThreadNode has been added to the queue, a new node is required for next time.
+                                        nextPoolThreadNode = new PoolThreadNode(currentThread());
+                                        // rerun outer
+                                        continue processingQueue;
+                                    }
+                                    // we had a task to run, but we failed to CAS it for some reason, so retry
+                                    if (UPDATE_STATISTICS) spinMisses.increment();
+                                    continue waitingForTask;
+                                } else {
+                                    final long timeoutNanos = this.timeoutNanos;
+                                    long oldVal = getThreadStatus();
+                                    if (elapsed >= timeoutNanos || task == EXIT || currentSizeOf(oldVal) > maxSizeOf(oldVal)) {
+                                        // try to exit this thread, if we are allowed
+                                        if (task == EXIT ||
+                                                isShutdownRequested(oldVal) ||
+                                                isAllowCoreTimeout(oldVal) ||
+                                                currentSizeOf(oldVal) > coreSizeOf(oldVal)
+                                                ) {
+                                            if (newNode.compareAndSetTask(task, GAVE_UP)) {
+                                                for (;;) {
+                                                    if (tryDeallocateThread(oldVal)) {
+                                                        // clear to exit.
+                                                        runningThreads.remove(currentThread());
+                                                        return;
+                                                    }
+                                                    if (UPDATE_STATISTICS) spinMisses.increment();
+                                                    oldVal = getThreadStatus();
+                                                }
+                                                //throw Assert.unreachableCode();
+                                            }
+                                            continue waitingForTask;
+                                        } else {
+                                            if (elapsed >= timeoutNanos) {
+                                                newNode.park(this);
+                                            } else {
+                                                newNode.park(this, timeoutNanos - elapsed);
+                                            }
+                                            Thread.interrupted();
+                                            elapsed = System.nanoTime() - start;
+                                            // retry inner
+                                            continue waitingForTask;
+                                        }
+                                        //throw Assert.unreachableCode();
+                                    } else {
+                                        assert task == WAITING;
+                                        newNode.park(this, timeoutNanos - elapsed);
+                                        Thread.interrupted();
+                                        elapsed = System.nanoTime() - start;
+                                        // retry inner
+                                        continue waitingForTask;
+                                    }
+                                    //throw Assert.unreachableCode();
+                                }
+                                //throw Assert.unreachableCode();
+                            } // :waitingForTask
+                            //throw Assert.unreachableCode();
                         } else if (headNext != null) {
                             // GC Nepotism:
                             // save dragging headNext into old generation
                             // (although being a PoolThreadNode it won't make a big difference)
                             nextPoolThreadNode.setNextRelaxed(null);
                         }
+                    } else if (headNext instanceof TaskNode taskNode) {
+                        if (compareAndSetHead(unsharedTaskNodes, head, taskNode)) {
+                            // save from GC Nepotism: generational GCs don't like
+                            // cross-generational references, so better to "clean-up" head::next
+                            // to save dragging head::next into the old generation.
+                            // Clean-up cannot just null out next
+                            head.setNextOrdered(head);
+                            if (getQueueLimited()) decreaseQueueSize();
+                            // task node was removed
+                            taskNode.getAndClearTask().run();
+                            continue;
+                        }
                     } else {
                         assert headNext instanceof TerminateWaiterNode;
-                        return headNext;
+                        // we're shutting down!
+                        runningThreads.remove(currentThread());
+                        deallocateThread();
+                        return;
                     }
                 }
-                if (UPDATE_STATISTICS) spinMisses.increment();
+                if (UPDATE_STATISTICS) this.spinMisses.increment();
             }
-        }
-
-        private Runnable getAndClearInitialTask() {
-            Runnable initial = initialTask;
-            this.initialTask = null;
-            return initial;
-        }
+        } // :processingQueue
+        //throw Assert.unreachableCode();
     }
 
     // =======================================================
@@ -2022,29 +2010,29 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     TaskNode getTail() {
-        return (TaskNode) unsafe.getObjectVolatile(unsharedObjects, RuntimeFields.tailOffset);
+        return (TaskNode) unsafe.getObjectVolatile(unsharedTaskNodes, RuntimeFields.tailOffset);
     }
 
     TaskNode setTailPlain(TaskNode tail) {
-        unsafe.putObject(unsharedObjects, RuntimeFields.tailOffset, tail);
+        unsafe.putObject(unsharedTaskNodes, RuntimeFields.tailOffset, tail);
         return tail;
     }
 
     boolean compareAndSetTail(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
-        return getTail() == expect && unsafe.compareAndSwapObject(unsharedObjects, RuntimeFields.tailOffset, expect, update);
+        return getTail() == expect && unsafe.compareAndSwapObject(unsharedTaskNodes, RuntimeFields.tailOffset, expect, update);
     }
 
-    TaskNode getHead() {
-        return (TaskNode) unsafe.getObjectVolatile(unsharedObjects, RuntimeFields.headOffset);
+    TaskNode getHead(final TaskNode[] unsharedTaskNodes) {
+        return (TaskNode) unsafe.getObjectVolatile(unsharedTaskNodes, RuntimeFields.headOffset);
     }
 
     TaskNode setHeadPlain(TaskNode head) {
-        unsafe.putObject(unsharedObjects, RuntimeFields.headOffset, head);
+        unsafe.putObject(unsharedTaskNodes, RuntimeFields.headOffset, head);
         return head;
     }
 
-    boolean compareAndSetHead(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
-        return unsafe.compareAndSwapObject(unsharedObjects, RuntimeFields.headOffset, expect, update);
+    boolean compareAndSetHead(final TaskNode[] unsharedTaskNodes, final TaskNode expect, final TaskNode update) {
+        return unsafe.compareAndSwapObject(unsharedTaskNodes, RuntimeFields.headOffset, expect, update);
     }
 
     long getThreadStatus() {
@@ -2296,10 +2284,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             t.addSuppressed(new RejectedExecutionException("Executor is being shut down"));
             throw t;
         }
-    }
-
-    static Runnable nullToNop(final Runnable task) {
-        return task == null ? NullRunnable.getInstance() : task;
     }
 
     // =======================================================
