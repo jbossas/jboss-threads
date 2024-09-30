@@ -27,7 +27,7 @@
     <groupId>org.jboss.threads</groupId>
     <artifactId>jboss-threads</artifactId>
     <packaging>jar</packaging>
-    <version>3.8.0.Final</version>
+    <version>3.8.1.Final-SNAPSHOT</version>
 
     <name>JBoss Threads</name>
 
