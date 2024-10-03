@@ -146,16 +146,29 @@ public class ScheduledEnhancedQueueExecutorTest {
     @Test
     public void testThatFixedDelayTerminatesTask() {
         EnhancedQueueExecutor eqe = new EnhancedQueueExecutor.Builder().build();
+        final ArrayList<LocalDateTime> times = new ArrayList<>();
         var r = new Runnable() {
-            final ScheduledFuture<?> future = eqe.scheduleWithFixedDelay(this, 0, 100, TimeUnit.MILLISECONDS);
-            final ArrayList<LocalDateTime> times = new ArrayList<>();
+            final CountDownLatch latch = new CountDownLatch(1);
+            volatile ScheduledFuture<?> future;
+
             public void run() {
                 times.add(LocalDateTime.now());
                 if (times.size() >= 5) {
+                    try {
+                        latch.await();
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
                     future.cancel(false);
                 }
             }
+
+            public void schedule() {
+                future = eqe.scheduleWithFixedDelay(this, 0, 100, TimeUnit.MILLISECONDS);
+            }
         };
+        r.schedule();
+        r.latch.countDown();
         assertThrows(CancellationException.class, () -> r.future.get(5, TimeUnit.SECONDS));
     }
 
