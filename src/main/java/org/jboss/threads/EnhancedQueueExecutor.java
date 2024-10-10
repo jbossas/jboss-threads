@@ -322,7 +322,10 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     private static final long activeCountOffset;
     private static final long peakQueueSizeOffset;
 
-    // GraalVM should initialize this class at run time
+    // GraalVM should initialize this class at run time, which we instruct it to do in
+    // src/main/resources/META-INF/native-image/org.jboss.threads/jboss-threads/native-image.properties
+    // Please make sure to update that file if you remove or rename this class, or if runtime
+    // initialization is no longer needed
     private static final class RuntimeFields {
         private static final int unsharedTaskNodesSize;
         private static final int unsharedLongsSize;
