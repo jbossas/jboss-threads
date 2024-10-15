@@ -84,7 +84,7 @@
         <dependency>
             <groupId>org.graalvm.sdk</groupId>
             <artifactId>nativeimage</artifactId>
-            <version>24.1.0</version>
+            <version>24.1.1</version>
             <scope>provided</scope>
             <!-- We only want the included annotations -->
             <exclusions>
