@@ -65,7 +65,7 @@
 
         <jdk.min.version>11</jdk.min.version>
 
-        <version.jboss.logging.tools>3.0.1.Final</version.jboss.logging.tools>
+        <version.jboss.logging.tools>3.0.2.Final</version.jboss.logging.tools>
     </properties>
 
     <dependencyManagement>
