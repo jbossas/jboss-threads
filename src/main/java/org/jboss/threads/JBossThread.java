@@ -33,7 +33,9 @@ public class JBossThread extends Thread {
     }).intValue();
 
     static {
-        Version.getVersionString();
+        if (VersionLogging.shouldLogVersion()) {
+            Version.getVersionString();
+        }
     }
 
     private volatile InterruptHandler interruptHandler;

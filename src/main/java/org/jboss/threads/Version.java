@@ -32,18 +32,10 @@ public final class Version {
         }
         JAR_NAME = jarName;
         VERSION_STRING = versionString;
-        boolean logVersion = AccessController.doPrivileged((PrivilegedAction<Boolean>) Version::shouldLogVersion).booleanValue();
+        boolean logVersion = AccessController.doPrivileged((PrivilegedAction<Boolean>) VersionLogging::shouldLogVersion).booleanValue();
         if (logVersion) try {
             Messages.msg.version(versionString);
         } catch (Throwable ignored) {}
-    }
-
-    private static Boolean shouldLogVersion() {
-        try {
-            return Boolean.valueOf(System.getProperty("jboss.log-version", "true"));
-        } catch (Throwable ignored) {
-            return Boolean.FALSE;
-        }
     }
 
     /**
