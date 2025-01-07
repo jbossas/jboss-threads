@@ -3,12 +3,15 @@ package org.jboss.threads;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.lang.Thread.currentThread;
+import static java.lang.invoke.MethodHandles.lookup;
 import static java.security.AccessController.doPrivileged;
 import static java.security.AccessController.getContext;
 import static java.util.concurrent.locks.LockSupport.parkNanos;
 import static java.util.concurrent.locks.LockSupport.unpark;
-import static org.jboss.threads.JBossExecutors.unsafe;
 
+import java.lang.invoke.ConstantBootstraps;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.lang.management.ManagementFactory;
 import java.security.AccessControlContext;
 import java.security.PrivilegedAction;
@@ -71,6 +74,15 @@ import io.smallrye.common.cpu.ProcessorInfo;
  */
 public final class EnhancedQueueExecutor extends AbstractExecutorService implements ManageableThreadPoolExecutorService, ScheduledExecutorService {
     private static final Thread[] NO_THREADS = new Thread[0];
+
+    private static final VarHandle objArrayHandle = MethodHandles.arrayElementVarHandle(TaskNode[].class);
+    private static final VarHandle longArrayHandle = MethodHandles.arrayElementVarHandle(long[].class);
+
+    private static final VarHandle terminationWaitersHandle = ConstantBootstraps.fieldVarHandle(lookup(), "terminationWaiters", VarHandle.class, EnhancedQueueExecutor.class, Waiter.class);
+
+    private static final VarHandle peakThreadCountHandle = ConstantBootstraps.fieldVarHandle(lookup(), "peakThreadCount", VarHandle.class, EnhancedQueueExecutor.class, int.class);
+    private static final VarHandle activeCountHandle = ConstantBootstraps.fieldVarHandle(lookup(), "activeCount", VarHandle.class, EnhancedQueueExecutor.class, int.class);
+    private static final VarHandle peakQueueSizeHandle = ConstantBootstraps.fieldVarHandle(lookup(), "peakQueueSize", VarHandle.class, EnhancedQueueExecutor.class, int.class);
 
     static {
         Version.getVersionString();
@@ -316,12 +328,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     private static final int numUnsharedLongs = 2;
     private static final int numUnsharedObjects = 2;
 
-    private static final long terminationWaitersOffset;
-
-    private static final long peakThreadCountOffset;
-    private static final long activeCountOffset;
-    private static final long peakQueueSizeOffset;
-
     // GraalVM should initialize this class at run time, which we instruct it to do in
     // src/main/resources/META-INF/native-image/org.jboss.threads/jboss-threads/native-image.properties
     // Please make sure to update that file if you remove or rename this class, or if runtime
@@ -330,11 +336,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         private static final int unsharedTaskNodesSize;
         private static final int unsharedLongsSize;
 
-        private static final long headOffset;
-        private static final long tailOffset;
+        private static final int headIndex;
+        private static final int tailIndex;
 
-        private static final long threadStatusOffset;
-        private static final long queueSizeOffset;
+        private static final int threadStatusIndex;
+        private static final int queueSizeIndex;
 
         static {
             int cacheLine = CacheInfo.getSmallestDataCacheLineSize();
@@ -344,28 +350,16 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             }
             // cpu spatial prefetcher can drag 2 cache-lines at once into L2
             int pad = cacheLine > 128 ? cacheLine : 128;
-            int longScale = unsafe.arrayIndexScale(long[].class);
-            int taskNodeScale = unsafe.arrayIndexScale(TaskNode[].class);
+            // make some assumptions about array scale
+            int longScale = 8;
+            int taskNodeScale = 8;
             // these fields are in units of array scale
             unsharedTaskNodesSize = pad / taskNodeScale * (numUnsharedObjects + 1);
             unsharedLongsSize = pad / longScale * (numUnsharedLongs + 1);
-            // these fields are in bytes
-            headOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad;
-            tailOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad * 2;
-            threadStatusOffset = unsafe.arrayBaseOffset(long[].class) + pad;
-            queueSizeOffset = unsafe.arrayBaseOffset(long[].class) + pad * 2;
-        }
-    }
-
-    static {
-        try {
-            terminationWaitersOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("terminationWaiters"));
-
-            peakThreadCountOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("peakThreadCount"));
-            activeCountOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("activeCount"));
-            peakQueueSizeOffset = unsafe.objectFieldOffset(EnhancedQueueExecutor.class.getDeclaredField("peakQueueSize"));
-        } catch (NoSuchFieldException e) {
-            throw new NoSuchFieldError(e.getMessage());
+            headIndex = pad / taskNodeScale;
+            tailIndex = pad / taskNodeScale * 2;
+            threadStatusIndex = pad / longScale;
+            queueSizeIndex = pad / longScale * 2;
         }
     }
 
@@ -383,7 +377,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     private static final long TS_ALLOW_CORE_TIMEOUT = 1L << 60;
     private static final long TS_SHUTDOWN_REQUESTED = 1L << 61;
     private static final long TS_SHUTDOWN_INTERRUPT = 1L << 62;
-    @SuppressWarnings("NumericOverflow")
     private static final long TS_SHUTDOWN_COMPLETE = 1L << 63;
 
     private static final int EXE_OK = 0;
@@ -929,8 +922,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 head = getHead(unsharedTaskNodes);
                 continue;
             }
-            if (headNext instanceof TaskNode) {
-                TaskNode taskNode = (TaskNode) headNext;
+            if (headNext instanceof TaskNode taskNode) {
                 if (compareAndSetHead(unsharedTaskNodes, head, taskNode)) {
                     // save from GC nepotism
                     head.setNextOrdered(head);
@@ -1941,8 +1933,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                     }
                     // otherwise the consumer gave up or was exited already, so fall out and...
                 }
-            } else if (tailNext instanceof TaskNode) {
-                TaskNode tailNextTaskNode = (TaskNode) tailNext;
+            } else if (tailNext instanceof TaskNode tailNextTaskNode) {
                 // Opportunistically update tail to the next node. If this operation has been handled by
                 // another thread we fall back to the loop and try again instead of duplicating effort.
                 if (compareAndSetTail(tail, tailNextTaskNode)) {
@@ -2013,79 +2004,79 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     TaskNode getTail() {
-        return (TaskNode) unsafe.getObjectVolatile(unsharedTaskNodes, RuntimeFields.tailOffset);
+        return (TaskNode) objArrayHandle.getVolatile(unsharedTaskNodes, RuntimeFields.tailIndex);
     }
 
     TaskNode setTailPlain(TaskNode tail) {
-        unsafe.putObject(unsharedTaskNodes, RuntimeFields.tailOffset, tail);
+        unsharedTaskNodes[RuntimeFields.tailIndex] = tail;
         return tail;
     }
 
     boolean compareAndSetTail(final EnhancedQueueExecutor.TaskNode expect, final EnhancedQueueExecutor.TaskNode update) {
-        return getTail() == expect && unsafe.compareAndSwapObject(unsharedTaskNodes, RuntimeFields.tailOffset, expect, update);
+        return getTail() == expect && objArrayHandle.compareAndSet(unsharedTaskNodes, RuntimeFields.tailIndex, expect, update);
     }
 
-    TaskNode getHead(final TaskNode[] unsharedTaskNodes) {
-        return (TaskNode) unsafe.getObjectVolatile(unsharedTaskNodes, RuntimeFields.headOffset);
+    static TaskNode getHead(final TaskNode[] unsharedTaskNodes) {
+        return (TaskNode) objArrayHandle.getVolatile(unsharedTaskNodes, RuntimeFields.headIndex);
     }
 
     TaskNode setHeadPlain(TaskNode head) {
-        unsafe.putObject(unsharedTaskNodes, RuntimeFields.headOffset, head);
+        unsharedTaskNodes[RuntimeFields.headIndex] = head;
         return head;
     }
 
-    boolean compareAndSetHead(final TaskNode[] unsharedTaskNodes, final TaskNode expect, final TaskNode update) {
-        return unsafe.compareAndSwapObject(unsharedTaskNodes, RuntimeFields.headOffset, expect, update);
+    static boolean compareAndSetHead(final TaskNode[] unsharedTaskNodes, final TaskNode expect, final TaskNode update) {
+        return objArrayHandle.compareAndSet(unsharedTaskNodes, RuntimeFields.headIndex, expect, update);
     }
 
     long getThreadStatus() {
-        return unsafe.getLongVolatile(unsharedLongs, RuntimeFields.threadStatusOffset);
+        return (long) longArrayHandle.getVolatile(unsharedLongs, RuntimeFields.threadStatusIndex);
     }
 
     long setThreadStatusPlain(long status) {
-        unsafe.putLong(unsharedLongs, RuntimeFields.threadStatusOffset, status);
+        unsharedLongs[RuntimeFields.threadStatusIndex] = status;
         return status;
     }
 
     boolean compareAndSetThreadStatus(final long expect, final long update) {
-        return unsafe.compareAndSwapLong(unsharedLongs, RuntimeFields.threadStatusOffset, expect, update);
+        return longArrayHandle.compareAndSet(unsharedLongs, RuntimeFields.threadStatusIndex, expect, update);
     }
 
     void incrementActiveCount() {
-        unsafe.getAndAddInt(this, activeCountOffset, 1);
+        activeCountHandle.getAndAdd(this, 1);
     }
 
     void decrementActiveCount() {
-        unsafe.getAndAddInt(this, activeCountOffset, -1);
+        activeCountHandle.getAndAdd(this, -1);
     }
 
     boolean compareAndSetPeakThreadCount(final int expect, final int update) {
-        return unsafe.compareAndSwapInt(this, peakThreadCountOffset, expect, update);
+        return peakThreadCountHandle.compareAndSet(this, expect, update);
     }
 
     boolean compareAndSetPeakQueueSize(final int expect, final int update) {
-        return unsafe.compareAndSwapInt(this, peakQueueSizeOffset, expect, update);
+        return peakQueueSizeHandle.compareAndSet(this, expect, update);
     }
 
     long getQueueSizeVolatile() {
-        return unsafe.getLongVolatile(unsharedLongs, RuntimeFields.queueSizeOffset);
+        return (long) longArrayHandle.getVolatile(unsharedLongs, RuntimeFields.queueSizeIndex);
     }
 
     long setQueueSizePlain(long queueSize) {
-        unsafe.putLong(unsharedLongs, RuntimeFields.queueSizeOffset, queueSize);
+        unsharedLongs[RuntimeFields.queueSizeIndex] = queueSize;
         return queueSize;
     }
 
     boolean compareAndSetQueueSize(final long expect, final long update) {
-        return unsafe.compareAndSwapLong(unsharedLongs, RuntimeFields.queueSizeOffset, expect, update);
+        return longArrayHandle.compareAndSet(unsharedLongs, RuntimeFields.queueSizeIndex, expect, update);
     }
 
     boolean compareAndSetTerminationWaiters(final Waiter expect, final Waiter update) {
-        return unsafe.compareAndSwapObject(this, terminationWaitersOffset, expect, update);
+        return terminationWaitersHandle.compareAndSet(this, expect, update);
     }
 
     Waiter getAndSetTerminationWaiters(final Waiter update) {
-        return (Waiter) unsafe.getAndSetObject(this, terminationWaitersOffset, update);
+        return (Waiter) terminationWaitersHandle.getAndSet(this, update);
     }
 
     // =======================================================
@@ -2294,21 +2285,13 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     abstract static class QNode {
-        private static final long nextOffset;
-
-        static {
-            try {
-                nextOffset = unsafe.objectFieldOffset(QNode.class.getDeclaredField("next"));
-            } catch (NoSuchFieldException e) {
-                throw new NoSuchFieldError(e.getMessage());
-            }
-        }
+        private static final VarHandle nextHandle = ConstantBootstraps.fieldVarHandle(lookup(), "next", VarHandle.class, QNode.class, QNode.class);
 
         @SuppressWarnings("unused")
         private volatile QNode next;
 
         boolean compareAndSetNext(QNode expect, QNode update) {
-            return unsafe.compareAndSwapObject(this, nextOffset, expect, update);
+            return nextHandle.compareAndSet(this, expect, update);
         }
 
         QNode getNext() {
@@ -2320,11 +2303,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         }
 
         void setNextRelaxed(final QNode node) {
-            unsafe.putObject(this, nextOffset, node);
+            nextHandle.set(this, node);
         }
 
         void setNextOrdered(final QNode node) {
-            unsafe.putOrderedObject(this, nextOffset, node);
+            nextHandle.setOpaque(this, node);
         }
     }
 
@@ -2360,18 +2343,8 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
          */
         private static final int STATE_UNPARKED = 2;
 
-
-        private static final long taskOffset;
-        private static final long parkedOffset;
-
-        static {
-            try {
-                taskOffset = unsafe.objectFieldOffset(PoolThreadNode.class.getDeclaredField("task"));
-                parkedOffset = unsafe.objectFieldOffset(PoolThreadNode.class.getDeclaredField("parked"));
-            } catch (NoSuchFieldException e) {
-                throw new NoSuchFieldError(e.getMessage());
-            }
-        }
+        private static final VarHandle taskHandle = ConstantBootstraps.fieldVarHandle(lookup(), "task", VarHandle.class, PoolThreadNode.class, Runnable.class);
+        private static final VarHandle parkedHandle = ConstantBootstraps.fieldVarHandle(lookup(), "parked", VarHandle.class, PoolThreadNode.class, int.class);
 
         private final Thread thread;
 
@@ -2390,7 +2363,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         }
 
         boolean compareAndSetTask(final Runnable expect, final Runnable update) {
-            return task == expect && unsafe.compareAndSwapObject(this, taskOffset, expect, update);
+            return task == expect && taskHandle.compareAndSet(this, expect, update);
         }
 
         Runnable getTask() {
@@ -2403,7 +2376,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
 
         void park(EnhancedQueueExecutor enhancedQueueExecutor) {
             int spins = PARK_SPINS;
-            if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+            if (parked == STATE_UNPARKED && parkedHandle.compareAndSet(this, STATE_UNPARKED, STATE_NORMAL)) {
                 return;
             }
             while (spins > 0) {
@@ -2413,11 +2386,11 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                     Thread.onSpinWait();
                 }
                 spins--;
-                if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                if (parked == STATE_UNPARKED && parkedHandle.compareAndSet(this, STATE_UNPARKED, STATE_NORMAL)) {
                     return;
                 }
             }
-            if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) try {
+            if (parked == STATE_NORMAL && parkedHandle.compareAndSet(this, STATE_NORMAL, STATE_PARKED)) try {
                 LockSupport.park(enhancedQueueExecutor);
             } finally {
                 // parked can be STATE_PARKED or STATE_UNPARKED, cannot possibly be STATE_NORMAL.
@@ -2436,7 +2409,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                 //as spin time is short and for our use cases it does not matter if the time
                 //overruns a bit (as the nano time is for thread timeout) we just spin then check
                 //to keep performance consistent between the two versions.
-                if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                if (parked == STATE_UNPARKED && parkedHandle.compareAndSet(this, STATE_UNPARKED, STATE_NORMAL)) {
                     return;
                 }
                 while (spins > 0) {
@@ -2445,7 +2418,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
                     } else {
                         Thread.onSpinWait();
                     }
-                    if (parked == STATE_UNPARKED && unsafe.compareAndSwapInt(this, parkedOffset, STATE_UNPARKED, STATE_NORMAL)) {
+                    if (parked == STATE_UNPARKED && parkedHandle.compareAndSet(this, STATE_UNPARKED, STATE_NORMAL)) {
                         return;
                     }
                     spins--;
@@ -2457,7 +2430,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
             } else {
                 remaining = nanos;
             }
-            if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_PARKED)) try {
+            if (parked == STATE_NORMAL && parkedHandle.compareAndSet(this, STATE_NORMAL, STATE_PARKED)) try {
                 LockSupport.parkNanos(enhancedQueueExecutor, remaining);
             } finally {
                 // parked can be STATE_PARKED or STATE_UNPARKED, cannot possibly be STATE_NORMAL.
@@ -2468,7 +2441,7 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         }
 
         void unpark() {
-            if (parked == STATE_NORMAL && unsafe.compareAndSwapInt(this, parkedOffset, STATE_NORMAL, STATE_UNPARKED)) {
+            if (parked == STATE_NORMAL && parkedHandle.compareAndSet(this, STATE_NORMAL, STATE_UNPARKED)) {
                 return;
             }
             LockSupport.unpark(thread);

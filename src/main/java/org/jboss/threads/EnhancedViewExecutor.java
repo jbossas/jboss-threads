@@ -5,6 +5,8 @@ import io.smallrye.common.constraint.Assert;
 import io.smallrye.common.constraint.Nullable;
 import io.smallrye.common.cpu.ProcessorInfo;
 
+import java.lang.invoke.ConstantBootstraps;
+import java.lang.invoke.VarHandle;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -18,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import static org.jboss.threads.JBossExecutors.unsafe;
+import static java.lang.invoke.MethodHandles.lookup;
 
 /**
  * A View Executor implementation which avoids lock contention in the common path. This allows us to
@@ -29,14 +31,7 @@ import static org.jboss.threads.JBossExecutors.unsafe;
  */
 final class EnhancedViewExecutor extends ViewExecutor {
     private static final Logger log = Logger.getLogger("org.jboss.threads.view-executor");
-    private static final long stateOffset;
-    static {
-        try {
-            stateOffset = unsafe.objectFieldOffset(EnhancedViewExecutor.class.getDeclaredField("state"));
-        } catch (NoSuchFieldException e) {
-            throw new NoSuchFieldError(e.getMessage());
-        }
-    }
+    private static final VarHandle stateHandle = ConstantBootstraps.fieldVarHandle(lookup(), "state", VarHandle.class, EnhancedViewExecutor.class, long.class);
 
     private static final int QUEUE_FAILURE_LOG_INTERVAL =
             readIntPropertyPrefixed("queue.failure.log.interval", 1_000_000);
@@ -429,7 +424,7 @@ final class EnhancedViewExecutor extends ViewExecutor {
     }
 
     private boolean compareAndSwapState(long expected, long update) {
-        return unsafe.compareAndSwapLong(this, stateOffset, expected, update);
+        return stateHandle.compareAndSet(this, expected, update);
     }
 
     private Thread.UncaughtExceptionHandler uncaughtExceptionHandler() {
