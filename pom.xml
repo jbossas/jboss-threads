@@ -63,7 +63,7 @@
         <jboss.threads.eqe.unlimited-queue>false</jboss.threads.eqe.unlimited-queue>
         <jboss.threads.eqe.register-mbean>false</jboss.threads.eqe.register-mbean>
 
-        <jdk.min.version>11</jdk.min.version>
+        <jdk.min.version>24</jdk.min.version>
 
         <version.jboss.logging.tools>3.0.4.Final</version.jboss.logging.tools>
     </properties>

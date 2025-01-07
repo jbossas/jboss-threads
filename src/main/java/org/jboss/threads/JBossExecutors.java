@@ -1,23 +1,18 @@
 package org.jboss.threads;
 
-import java.lang.reflect.Field;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ScheduledExecutorService;
-import java.security.PrivilegedAction;
-import java.security.AccessController;
 
 import org.jboss.logging.Logger;
 import io.smallrye.common.constraint.Assert;
-import sun.misc.Unsafe;
 
 /**
  * JBoss thread- and executor-related utility and factory methods.
  */
-@SuppressWarnings("deprecation")
 public final class JBossExecutors {
 
     private static final Logger THREAD_ERROR_LOGGER = Logger.getLogger("org.jboss.threads.errors");
@@ -225,7 +220,7 @@ public final class JBossExecutors {
 
     private static final Runnable TCCL_RESETTER = new Runnable() {
         public void run() {
-            Thread.currentThread().setContextClassLoader(null);
+            JDKSpecific.setThreadContextClassLoader(Thread.currentThread(), null);
         }
 
         public String toString() {
@@ -294,31 +289,6 @@ public final class JBossExecutors {
         return new ContextClassLoaderSavingRunnable(getContextClassLoader(Thread.currentThread()), delegate);
     }
 
-    static final Unsafe unsafe;
-
-    static final long contextClassLoaderOffs;
-
-    static {
-        unsafe = AccessController.doPrivileged(new PrivilegedAction<Unsafe>() {
-            public Unsafe run() {
-                try {
-                    final Field field = Unsafe.class.getDeclaredField("theUnsafe");
-                    field.setAccessible(true);
-                    return (Unsafe) field.get(null);
-                } catch (IllegalAccessException e) {
-                    throw new IllegalAccessError(e.getMessage());
-                } catch (NoSuchFieldException e) {
-                    throw new NoSuchFieldError(e.getMessage());
-                }
-            }
-        });
-        try {
-            contextClassLoaderOffs = unsafe.objectFieldOffset(Thread.class.getDeclaredField("contextClassLoader"));
-        } catch (NoSuchFieldException e) {
-            throw new NoSuchFieldError(e.getMessage());
-        }
-    }
-
     /**
      * Privileged method to get the context class loader of the given thread.
      *
@@ -326,7 +296,7 @@ public final class JBossExecutors {
      * @return the context class loader
      */
     static ClassLoader getContextClassLoader(final Thread thread) {
-        return (ClassLoader) unsafe.getObject(thread, contextClassLoaderOffs);
+        return JDKSpecific.getThreadContextClassLoader(thread);
     }
 
     /**
@@ -337,12 +307,11 @@ public final class JBossExecutors {
      * @return the old context class loader
      */
     static ClassLoader getAndSetContextClassLoader(final Thread thread, final ClassLoader newClassLoader) {
-        final ClassLoader currentClassLoader = (ClassLoader) unsafe.getObject(thread, contextClassLoaderOffs);
-        if (currentClassLoader != newClassLoader) {
-            // not using setContextClassLoader to save loading the current one again
-            unsafe.putObject(thread, contextClassLoaderOffs, newClassLoader);
+        ClassLoader old = JDKSpecific.getThreadContextClassLoader(thread);
+        if (old != newClassLoader) {
+            JDKSpecific.setThreadContextClassLoader(thread, newClassLoader);
         }
-        return currentClassLoader;
+        return old;
     }
 
     /**
@@ -352,9 +321,7 @@ public final class JBossExecutors {
      * @param classLoader the new context class loader
      */
     static void setContextClassLoader(final Thread thread, final ClassLoader classLoader) {
-        if (unsafe.getObject(thread, contextClassLoaderOffs) != classLoader) {
-            unsafe.putObject(thread, contextClassLoaderOffs, classLoader);
-        }
+        JDKSpecific.setThreadContextClassLoader(thread, classLoader);
     }
 
     /**
@@ -363,7 +330,7 @@ public final class JBossExecutors {
      * @param thread the thread to introspect
      */
     static void clearContextClassLoader(final Thread thread) {
-        unsafe.putObject(thread, contextClassLoaderOffs, SAFE_CL);
+        JDKSpecific.setThreadContextClassLoader(thread, SAFE_CL);
     }
 
     // ==================================================
