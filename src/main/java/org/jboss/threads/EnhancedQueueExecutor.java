@@ -47,7 +47,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 
-import io.smallrye.common.cpu.CacheInfo;
 import org.jboss.threads.management.ManageableThreadPoolExecutorService;
 import org.jboss.threads.management.StandardThreadPoolMXBean;
 
@@ -122,13 +121,6 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
     // Optimization control flags
     // =======================================================
-
-    /**
-     * A global hint which establishes whether it is recommended to disable uses of {@code EnhancedQueueExecutor}.
-     * This hint defaults to {@code false} but can be changed to {@code true} by setting the {@code jboss.threads.eqe.disable}
-     * property to {@code true} before this class is initialized.
-     */
-    public static final boolean DISABLE_HINT = readBooleanPropertyPrefixed("disable", false);
 
     /**
      * Update the summary statistics.
@@ -337,13 +329,10 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         private static final long queueSizeOffset;
 
         static {
-            int cacheLine = CacheInfo.getSmallestDataCacheLineSize();
-            if (cacheLine == 0) {
-                // guess
-                cacheLine = 64;
-            }
+            // this is fine for pretty much 32 and 64 bit x86 and ARM processors; see
+            // https://github.com/ziglang/zig/blob/0.13.0/lib/std/atomic.zig#L424-L434
             // cpu spatial prefetcher can drag 2 cache-lines at once into L2
-            int pad = cacheLine > 128 ? cacheLine : 128;
+            int pad = 128;
             int longScale = unsafe.arrayIndexScale(long[].class);
             int taskNodeScale = unsafe.arrayIndexScale(TaskNode[].class);
             // these fields are in units of array scale
