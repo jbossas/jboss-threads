@@ -123,6 +123,13 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
     // =======================================================
 
     /**
+     * A global hint which establishes whether it is recommended to disable uses of {@code EnhancedQueueExecutor}.
+     * This hint defaults to {@code false} but can be changed to {@code true} by setting the {@code jboss.threads.eqe.disable}
+     * property to {@code true} before this class is initialized.
+     */
+    public static final boolean DISABLE_HINT = readBooleanPropertyPrefixed("disable", false);
+
+    /**
      * Update the summary statistics.
      */
     static final boolean UPDATE_STATISTICS = readBooleanPropertyPrefixed("statistics", false);
@@ -329,20 +336,31 @@ public final class EnhancedQueueExecutor extends AbstractExecutorService impleme
         private static final long queueSizeOffset;
 
         static {
-            // this is fine for pretty much 32 and 64 bit x86 and ARM processors; see
-            // https://github.com/ziglang/zig/blob/0.13.0/lib/std/atomic.zig#L424-L434
-            // cpu spatial prefetcher can drag 2 cache-lines at once into L2
-            int pad = 128;
             int longScale = unsafe.arrayIndexScale(long[].class);
             int taskNodeScale = unsafe.arrayIndexScale(TaskNode[].class);
-            // these fields are in units of array scale
-            unsharedTaskNodesSize = pad / taskNodeScale * (numUnsharedObjects + 1);
-            unsharedLongsSize = pad / longScale * (numUnsharedLongs + 1);
-            // these fields are in bytes
-            headOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad;
-            tailOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad * 2;
-            threadStatusOffset = unsafe.arrayBaseOffset(long[].class) + pad;
-            queueSizeOffset = unsafe.arrayBaseOffset(long[].class) + pad * 2;
+            if (ProcessorInfo.availableProcessors() > 1) {
+                // this is fine for pretty much 32 and 64 bit x86 and ARM processors; see
+                // https://github.com/ziglang/zig/blob/0.13.0/lib/std/atomic.zig#L424-L434
+                // cpu spatial prefetcher can drag 2 cache-lines at once into L2
+                int pad = 128;
+                // we both pad before and after the array to avoid false sharing with surrounding heap objects
+                unsharedTaskNodesSize = pad / taskNodeScale * (numUnsharedObjects + 1);
+                unsharedLongsSize = pad / longScale * (numUnsharedLongs + 1);
+                // these fields are in bytes
+                headOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad;
+                tailOffset = unsafe.arrayBaseOffset(TaskNode[].class) + pad * 2;
+                threadStatusOffset = unsafe.arrayBaseOffset(long[].class) + pad;
+                queueSizeOffset = unsafe.arrayBaseOffset(long[].class) + pad * 2;
+            } else {
+                unsharedTaskNodesSize = numUnsharedObjects;
+                unsharedLongsSize = numUnsharedLongs;
+                // position 0
+                headOffset = unsafe.arrayBaseOffset(TaskNode[].class);
+                // position 1 in the object array
+                tailOffset = unsafe.arrayBaseOffset(TaskNode[].class) + taskNodeScale;
+                threadStatusOffset = unsafe.arrayBaseOffset(long[].class);
+                queueSizeOffset = unsafe.arrayBaseOffset(long[].class) + longScale;
+            }
         }
     }
 
