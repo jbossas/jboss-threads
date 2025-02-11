@@ -1,6 +1,6 @@
 package org.jboss.threads;
 
-import java.lang.reflect.Field;
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -302,9 +302,9 @@ public final class JBossExecutors {
         unsafe = AccessController.doPrivileged(new PrivilegedAction<Unsafe>() {
             public Unsafe run() {
                 try {
-                    final Field field = Unsafe.class.getDeclaredField("theUnsafe");
-                    field.setAccessible(true);
-                    return (Unsafe) field.get(null);
+                    final var lookup = MethodHandles.privateLookupIn(Unsafe.class, MethodHandles.lookup());
+                    final var theUnsafeVH = lookup.findStaticVarHandle(Unsafe.class, "theUnsafe", Unsafe.class);
+                    return (Unsafe) theUnsafeVH.get();
                 } catch (IllegalAccessException e) {
                     throw new IllegalAccessError(e.getMessage());
                 } catch (NoSuchFieldException e) {
