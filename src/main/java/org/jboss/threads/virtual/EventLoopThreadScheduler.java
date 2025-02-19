@@ -38,8 +38,7 @@ final class EventLoopThreadScheduler extends ThreadScheduler {
         long waitTime;
         for (;;) {
             // clear the unpark permit
-            LockSupport.unpark(Thread.currentThread());
-            LockSupport.park();
+            Util.clearUnpark();
             // clear interrupt status
             Thread.interrupted();
             // call the event loop

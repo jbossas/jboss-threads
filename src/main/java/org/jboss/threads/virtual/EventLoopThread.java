@@ -4,15 +4,18 @@ import java.lang.invoke.ConstantBootstraps;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.PriorityQueue;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
+import io.smallrye.common.annotation.Experimental;
 import org.jboss.threads.JBossThread;
 
 /**
@@ -88,6 +91,66 @@ public final class EventLoopThread extends JBossThread implements Executor {
     }
 
     /**
+     * {@return a new executor service which pools threads and schedules tasks to this event loop}
+     * Executed tasks are free to change to another event loop or the shared pool.
+     * Tasks are always started with an association to this event loop.
+     */
+    @Experimental("Pooled event-loop-bound threads")
+    public Executor newPool() {
+        return new Executor() {
+            static final VarHandle taskHandle = ConstantBootstraps.fieldVarHandle(MethodHandles.lookup(), "task", VarHandle.class, Runner.class, Runnable.class);
+            class Runner implements Runnable {
+
+                private volatile Thread thread;
+                @SuppressWarnings("unused") // taskHandle
+                private volatile Runnable task;
+
+                Runner(final Runnable task) {
+                    this.task = task;
+                }
+
+                public void run() {
+                    thread = Thread.currentThread();
+                    for (;;) {
+                        // get and run next task
+                        Runnable task = (Runnable) taskHandle.getAndSet(this, null);
+                        if (task != null) {
+                            try {
+                                task.run();
+                            } catch (Throwable ignored) {}
+                            Util.clearUnpark();
+                            // re-add to queue /after/ clearing park permit
+                            q.addFirst(this);
+                        }
+                        // wait for a new task
+                        Scheduler.parkAndResumeOn(EventLoopThread.this);
+                    }
+                }
+            }
+
+            private final ConcurrentLinkedDeque<Runner> q = new ConcurrentLinkedDeque<>();
+
+            public void execute(final Runnable command) {
+                Runner runner;
+                for (;;) {
+                    runner = q.poll();
+                    if (runner == null) {
+                        // don't wait around, just start a new thread immediately
+                        runner = new Runner(command);
+                        EventLoopThread.this.execute(runner);
+                        return;
+                    }
+                    // try to set the task
+                    if (taskHandle.compareAndSet(runner, null, command)) {
+                        LockSupport.unpark(runner.thread);
+                        return;
+                    }
+                }
+            }
+        };
+    }
+
+    /**
      * {@return the owner of this event loop thread}
      */
     Scheduler owner() {
@@ -121,6 +184,9 @@ public final class EventLoopThread extends JBossThread implements Executor {
 
     /**
      * Run the carrier side of the event loop.
+     * This should only be called by {@code Thread.start()}.
+     *
+     * @throws IllegalThreadStateException if called inappropriately
      */
     public void run() {
         if (Thread.currentThread() != this || elts.virtualThread().isAlive()) {
