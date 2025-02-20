@@ -12,7 +12,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
-import java.util.function.Function;
 import java.util.function.Predicate;
 
 import io.smallrye.common.annotation.Experimental;
@@ -63,12 +62,15 @@ public final class EventLoopThread extends JBossThread implements Executor {
      * The delay queue for timed sleep (patched JDKs only).
      */
     private final DelayQueue<DelayedTask<?>> dq = new DelayQueue<>();
+    /**
+     * The event loop's dispatcher.
+     */
     private final Dispatcher dispatcher = new EventLoopDispatcher();
 
-    EventLoopThread(final Scheduler scheduler, final int idx, final Function<? super EventLoopThread, ? extends EventLoop> eventLoopFactory) {
+    EventLoopThread(final Scheduler scheduler, final int idx, final EventLoop eventLoop) {
         super(() -> {}, "Event loop carrier thread " + idx);
         elts = new EventLoopThreadScheduler(scheduler, this, idx);
-        this.eventLoop = eventLoopFactory.apply(this);
+        this.eventLoop = eventLoop;
     }
 
     /**

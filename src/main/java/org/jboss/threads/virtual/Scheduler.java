@@ -8,7 +8,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
-import java.util.function.Function;
 import java.util.stream.Stream;
 
 import io.smallrye.common.annotation.Experimental;
@@ -37,15 +36,15 @@ public final class Scheduler implements Executor {
     }
 
     /**
-     * Construct and start a new event loop thread.
+     * Construct and start a new event loop thread for this scheduler.
      *
-     * @param eventLoopFactory the event loop factory (must not be {@code null})
+     * @param eventLoop the event loop to use (must not be {@code null})
      * @return the new event loop thread (not {@code null})
      * @throws NullPointerException if the factory returned a {@code null} event loop
      */
-    public EventLoopThread newEventLoopThread(Function<? super EventLoopThread, ? extends EventLoop> eventLoopFactory) {
-        Assert.checkNotNullParam("eventLoopFactory", eventLoopFactory);
-        EventLoopThread eventLoopThread = new EventLoopThread(this, eventLoopIdx.getAndIncrement(), eventLoopFactory);
+    public EventLoopThread newEventLoopThread(EventLoop eventLoop) {
+        Assert.checkNotNullParam("eventLoop", eventLoop);
+        EventLoopThread eventLoopThread = new EventLoopThread(this, eventLoopIdx.getAndIncrement(), eventLoop);
         eventLoopThread.start();
         return eventLoopThread;
     }
@@ -72,6 +71,17 @@ public final class Scheduler implements Executor {
 
     void executeOnEventLoop(final EventLoopThread eventLoopThread, final Runnable command) {
         new UserThreadScheduler(this, command, threadIdx.getAndIncrement(), eventLoopThread).start();
+    }
+
+    /**
+     * {@return the current event loop carrier thread, or {@code null} if the current thread is not currently carried by an event loop thread}
+     */
+    public static EventLoopThread currentEventLoopThread() {
+        if (Thread.currentThread().isVirtual() && Access.currentCarrier() instanceof EventLoopThread elt) {
+            return elt;
+        } else {
+            return null;
+        }
     }
 
     /**
@@ -242,6 +252,38 @@ public final class Scheduler implements Executor {
             ts.delayBy(Math.max(0, nanos));
         }
         Thread.yield();
+    }
+
+    /**
+     * {@return the priority of the current thread or virtual thread}
+     */
+    public static int currentPriority() {
+        Thread thread = Thread.currentThread();
+        if (thread.isVirtual() && Access.schedulerOf(thread) instanceof ThreadScheduler ts) {
+            return ts.priority();
+        } else {
+            return thread.getPriority();
+        }
+    }
+
+    /**
+     * Change the priority of the current virtual thread, if possible.
+     *
+     * @param newPriority the new virtual thread priority
+     */
+    public static void changePriority(int newPriority) {
+        newPriority = Math.min(Math.max(newPriority, Thread.MIN_PRIORITY), Thread.MAX_PRIORITY);
+        Thread thread = Thread.currentThread();
+        if (thread.isVirtual() && Access.schedulerOf(thread) instanceof ThreadScheduler ts) {
+            int old = ts.priority();
+            if (newPriority != old) {
+                // apply new priority
+                ts.setPriority(newPriority);
+                Thread.yield();
+            }
+        } else {
+            thread.setPriority(newPriority);
+        }
     }
 
     ThreadContainer container() {

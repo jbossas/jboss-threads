@@ -17,11 +17,18 @@ import java.util.concurrent.TimeUnit;
 abstract class ThreadScheduler implements ScheduledExecutorService, Runnable {
     private static final VarHandle yieldedHandle = ConstantBootstraps.fieldVarHandle(MethodHandles.lookup(), "yielded", VarHandle.class, ThreadScheduler.class, boolean.class);
     private static final VarHandle delayHandle = ConstantBootstraps.fieldVarHandle(MethodHandles.lookup(), "delay", VarHandle.class, ThreadScheduler.class, long.class);
+    private static final VarHandle priorityHandle = ConstantBootstraps.fieldVarHandle(MethodHandles.lookup(), "priority", VarHandle.class, ThreadScheduler.class, int.class);
     /**
      * The system nanos time when this task started waiting.
      * Accessed only by carrier threads.
      */
     private long waitingSinceTime;
+    /**
+     * The current thread priority, between {@link Thread#MIN_PRIORITY} (lowest) or {@link Thread#MAX_PRIORITY}.
+     * Accessed by carrier threads and virtual threads.
+     */
+    @SuppressWarnings("unused") // priorityHandle
+    private int priority = Thread.NORM_PRIORITY;
     /**
      * The nanosecond delay time for scheduling.
      * Accessed by carrier threads and virtual threads.
@@ -63,12 +70,52 @@ abstract class ThreadScheduler implements ScheduledExecutorService, Runnable {
         return waitingSinceTime;
     }
 
+    int priority() {
+        return (int) priorityHandle.getOpaque(this);
+    }
+
+    void setPriority(final int priority) {
+        priorityHandle.setOpaque(this, priority);
+    }
+
     /**
-     * {@return the wait time of this thread in nanos}
+     * {@return the number of nanoseconds that this thread has been waiting for}
+     * The higher the waiting-since time, the higher priority a thread will have.
+     *
      * @param current the current time
      */
     long waitingSince(long current) {
-        return current - waitingSinceTime - (long) delayHandle.getOpaque(this);
+        long delay = (long) delayHandle.getOpaque(this);
+        // delay is always 0 or positive
+        long nanos = Math.max(0, current - waitingSinceTime) - delay;
+        // nanos may be negative now
+        int priority = priority();
+        if (priority < Thread.NORM_PRIORITY) {
+            // lower priority, so make nanos less positive or more negative
+            if (nanos < 0) {
+                int shift = priority - Thread.NORM_PRIORITY;
+                if (shift > Long.numberOfLeadingZeros(- nanos)) {
+                    nanos = Long.MIN_VALUE;
+                } else {
+                    nanos <<= shift;
+                }
+            } else {
+                nanos >>= Thread.NORM_PRIORITY - priority;
+            }
+        } else if (priority > Thread.NORM_PRIORITY) {
+            // higher priority, so make nanos more positive or less negative
+            if (nanos < 0) {
+                nanos >>= Thread.NORM_PRIORITY - priority;
+            } else {
+                int shift = priority - Thread.NORM_PRIORITY;
+                if (shift > Long.numberOfLeadingZeros(nanos)) {
+                    nanos = Long.MAX_VALUE;
+                } else {
+                    nanos <<= shift;
+                }
+            }
+        }
+        return nanos;
     }
 
     /**
@@ -78,6 +125,7 @@ abstract class ThreadScheduler implements ScheduledExecutorService, Runnable {
         assert ! Thread.currentThread().isVirtual();
         // reset delay
         delayBy(0);
+        // todo: we could change the carrier thread priority when running on the pool, but it might not pay off
         try {
             Access.continuationOf(virtualThread).run();
         } finally {

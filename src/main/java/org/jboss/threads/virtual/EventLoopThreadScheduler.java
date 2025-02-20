@@ -21,8 +21,10 @@ final class EventLoopThreadScheduler extends ThreadScheduler {
     private volatile long waitTime = -1;
 
     EventLoopThreadScheduler(final Scheduler scheduler, final EventLoopThread eventLoopThread, final long idx) {
-        super(scheduler, "Event loop", idx);
+        super(scheduler, "event-loop-", idx);
         this.eventLoopThread = eventLoopThread;
+        // set event loop thread to almost-maximum priority
+        setPriority(Thread.MAX_PRIORITY - 1);
     }
 
     void runThreadBody() {
@@ -52,10 +54,6 @@ final class EventLoopThreadScheduler extends ThreadScheduler {
 
     void setWaitTime(long nanos) {
         waitTimeHandle.setOpaque(this, nanos);
-    }
-
-    void start() {
-        super.start();
     }
 
     public void execute(final Runnable command) {

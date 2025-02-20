@@ -26,7 +26,7 @@ final class UserThreadScheduler extends ThreadScheduler {
     }
 
     private UserThreadScheduler(final Scheduler scheduler, final Runnable task, final Dispatcher dispatcher, final long idx) {
-        super(scheduler, "User thread", idx);
+        super(scheduler, "user-", idx);
         this.dispatcher = dispatcher;
         this.task = task;
     }
