@@ -30,10 +30,10 @@ final class Access {
             ct = thr.findStatic(Thread.class, "currentCarrierThread", MethodType.methodType(Thread.class));
             Class<?> vtbClass = Class.forName("java.lang.ThreadBuilders$VirtualThreadBuilder", false, null);
             try {
-                vtf = thr.findConstructor(vtbClass, MethodType.methodType(void.class, Executor.class));
-            } catch (NoSuchMethodError ignored) {
-                // patched JDK
                 vtf = thr.findConstructor(vtbClass, MethodType.methodType(void.class, ScheduledExecutorService.class));
+            } catch (NoSuchMethodException | NoSuchMethodError ignored) {
+                // unpatched JDK
+                vtf = thr.findConstructor(vtbClass, MethodType.methodType(void.class, Executor.class));
             }
             // create efficient transformer
             vtf = vtf.asType(MethodType.methodType(Thread.Builder.OfVirtual.class, ThreadScheduler.class));
@@ -42,7 +42,13 @@ final class Access {
             tswc = thr.findVirtual(Thread.class, "start", MethodType.methodType(void.class, ThreadContainer.class));
             Class<?> vtc = thr.findClass("java.lang.VirtualThread");
             MethodHandles.Lookup vthr = MethodHandles.privateLookupIn(vtc, MethodHandles.lookup());
-            sg = vthr.findGetter(vtc, "scheduler", Executor.class).asType(MethodType.methodType(Executor.class, Thread.class));
+            try {
+                sg = vthr.findGetter(vtc, "scheduler", ScheduledExecutorService.class);
+            } catch (NoSuchFieldException | NoSuchFieldError ignored) {
+                // unpatched JDK
+                sg = vthr.findGetter(vtc, "scheduler", Executor.class);
+            }
+            sg = sg.asType(MethodType.methodType(Executor.class, Thread.class));
             cg = vthr.findGetter(vtc, "runContinuation", Runnable.class).asType(MethodType.methodType(Runnable.class, Thread.class));
         } catch (Throwable e) {
             // no good
@@ -85,9 +91,9 @@ final class Access {
         }
     }
 
-    static ThreadScheduler schedulerOf(Thread thread) {
+    static Executor schedulerOf(Thread thread) {
         try {
-            return (ThreadScheduler) (Executor) schedulerGetter.invokeExact(thread);
+            return (Executor) schedulerGetter.invokeExact(thread);
         } catch (RuntimeException | Error e) {
             throw e;
         } catch (Throwable e) {

@@ -16,8 +16,21 @@ import java.util.concurrent.TimeUnit;
  */
 abstract class ThreadScheduler implements ScheduledExecutorService, Runnable {
     private static final VarHandle yieldedHandle = ConstantBootstraps.fieldVarHandle(MethodHandles.lookup(), "yielded", VarHandle.class, ThreadScheduler.class, boolean.class);
+    private static final VarHandle delayHandle = ConstantBootstraps.fieldVarHandle(MethodHandles.lookup(), "delay", VarHandle.class, ThreadScheduler.class, long.class);
+    /**
+     * The system nanos time when this task started waiting.
+     * Accessed only by carrier threads.
+     */
+    private long waitingSinceTime;
+    /**
+     * The nanosecond delay time for scheduling.
+     * Accessed by carrier threads and virtual threads.
+     */
+    @SuppressWarnings("unused") // delayHandle
+    private long delay;
     /**
      * Indicate if this thread parked or yielded, to detect a starvation scenario.
+     * Accessed by carrier threads and virtual threads.
      */
     @SuppressWarnings("unused") // yieldedHandle
     volatile boolean yielded;
@@ -42,14 +55,33 @@ abstract class ThreadScheduler implements ScheduledExecutorService, Runnable {
 
     abstract void runThreadBody();
 
+    void delayBy(long nanos) {
+        delayHandle.setOpaque(this, nanos);
+    }
+
+    long waitingSinceTime() {
+        return waitingSinceTime;
+    }
+
+    /**
+     * {@return the wait time of this thread in nanos}
+     * @param current the current time
+     */
+    long waitingSince(long current) {
+        return current - waitingSinceTime - (long) delayHandle.getOpaque(this);
+    }
+
     /**
      * Run the continuation for the current thread.
      */
     public void run() {
         assert ! Thread.currentThread().isVirtual();
+        // reset delay
+        delayBy(0);
         try {
             Access.continuationOf(virtualThread).run();
         } finally {
+            waitingSinceTime = System.nanoTime();
             yieldedHandle.setOpaque(this, true);
         }
     }

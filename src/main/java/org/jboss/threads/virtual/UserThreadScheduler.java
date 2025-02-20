@@ -9,10 +9,6 @@ import java.util.concurrent.locks.LockSupport;
  */
 final class UserThreadScheduler extends ThreadScheduler {
     /**
-     * The system nanos time when this task started waiting.
-     */
-    private long waitingSince;
-    /**
      * The current scheduling executor.
      */
     private Dispatcher dispatcher;
@@ -42,17 +38,6 @@ final class UserThreadScheduler extends ThreadScheduler {
         task.run();
     }
 
-    /**
-     * Run the continuation for the current thread.
-     */
-    public void run() {
-        try {
-            super.run();
-        } finally {
-            waitingSince = System.nanoTime();
-        }
-    }
-
     public void execute(Runnable command) {
         if (command == Access.continuationOf(virtualThread())) {
             dispatcher.execute(this);
@@ -65,14 +50,6 @@ final class UserThreadScheduler extends ThreadScheduler {
     public ScheduledFuture<?> schedule(final Runnable command, final long delay, final TimeUnit unit) {
         // command is going to be VirtualThread::unpark or similar (runnable from carrier thread)
         return dispatcher.schedule(command, unit.toNanos(delay));
-    }
-
-    /**
-     * {@return the wait time of this thread in nanos}
-     * @param current the current time
-     */
-    long waitTime(long current) {
-        return current - waitingSince;
     }
 
     void resumeOn(final Dispatcher dispatcher) {
@@ -117,9 +94,5 @@ final class UserThreadScheduler extends ThreadScheduler {
         } else {
             LockSupport.parkNanos(blocker, nanos);
         }
-    }
-
-    long waitingSince() {
-        return waitingSince;
     }
 }

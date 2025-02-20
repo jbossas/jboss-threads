@@ -5,30 +5,24 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.VarHandle;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.LockSupport;
 
 /**
  * The thread scheduler for an event loop thread.
  */
 final class EventLoopThreadScheduler extends ThreadScheduler {
-    private static final VarHandle readyHandle = ConstantBootstraps.fieldVarHandle(MethodHandles.lookup(), "ready", VarHandle.class, EventLoopThreadScheduler.class, boolean.class);
+    private static final VarHandle waitTimeHandle = ConstantBootstraps.fieldVarHandle(MethodHandles.lookup(), "waitTime", VarHandle.class, EventLoopThreadScheduler.class, long.class);
 
     private final EventLoopThread eventLoopThread;
-    @SuppressWarnings("unused") // readyHandle
-    private boolean ready;
+    /**
+     * The wait time for the virtual thread side of the event loop.
+     * This value is handed back and forth between the I/O carrier thread and the event loop virtual thread.
+     */
+    @SuppressWarnings("unused") // waitTimeHandle
+    private volatile long waitTime = -1;
 
     EventLoopThreadScheduler(final Scheduler scheduler, final EventLoopThread eventLoopThread, final long idx) {
         super(scheduler, "Event loop", idx);
         this.eventLoopThread = eventLoopThread;
-    }
-
-    boolean ready() {
-        return (boolean) readyHandle.getOpaque(this);
-    }
-
-    void makeReady() {
-        readyHandle.setOpaque(this, true);
-        LockSupport.unpark(virtualThread());
     }
 
     void runThreadBody() {
@@ -42,7 +36,7 @@ final class EventLoopThreadScheduler extends ThreadScheduler {
             // clear interrupt status
             Thread.interrupted();
             // call the event loop
-            waitTime = eventLoopThread.waitTime();
+            waitTime = (long) waitTimeHandle.getOpaque(this);
             try {
                 eventLoop.unparkAny(waitTime);
             } catch (Throwable ignored) {
@@ -56,9 +50,8 @@ final class EventLoopThreadScheduler extends ThreadScheduler {
         }
     }
 
-    public void run() {
-        readyHandle.setOpaque(this, false);
-        super.run();
+    void setWaitTime(long nanos) {
+        waitTimeHandle.setOpaque(this, nanos);
     }
 
     void start() {
@@ -66,7 +59,7 @@ final class EventLoopThreadScheduler extends ThreadScheduler {
     }
 
     public void execute(final Runnable command) {
-        readyHandle.setOpaque(this, true);
+        eventLoopThread.enqueue(this);
     }
 
     public ScheduledFuture<?> schedule(final Runnable command, final long delay, final TimeUnit unit) {

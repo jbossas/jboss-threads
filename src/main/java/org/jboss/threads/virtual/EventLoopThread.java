@@ -24,10 +24,6 @@ import org.jboss.threads.JBossThread;
  * use {@link #virtualThread()}.
  */
 public final class EventLoopThread extends JBossThread implements Executor {
-    private static final VarHandle waitTimeHandle = ConstantBootstraps.fieldVarHandle(MethodHandles.lookup(), "waitTime", VarHandle.class, EventLoopThread.class, long.class);
-
-    // TODO: we could track the currently-mounted thread fairly easily, maybe along with a timestamp
-
     /**
      * The virtual thread which runs the event handler.
      */
@@ -51,24 +47,18 @@ public final class EventLoopThread extends JBossThread implements Executor {
      */
     private long currentNanos;
     /**
-     * The wait time for the virtual thread side of the event loop.
-     * This value is handed back and forth between the I/O carrier thread and the event loop virtual thread.
-     */
-    @SuppressWarnings("unused") // waitTimeHandle
-    private volatile long waitTime = -1;
-    /**
      * The shared/slow task queue, which allows tasks to be enqueued from outside of this thread.
      */
-    private final LinkedBlockingQueue<UserThreadScheduler> sq = new LinkedBlockingQueue<>();
+    private final LinkedBlockingQueue<ThreadScheduler> sq = new LinkedBlockingQueue<>();
     /**
      * The task queue.
      * The queue is ordered by the amount of time that each entry (thread) has been waiting to run.
      */
-    private final PriorityQueue<UserThreadScheduler> q = new PriorityQueue<>(this::compare);
+    private final PriorityQueue<ThreadScheduler> q = new PriorityQueue<>(this::compare);
     /**
      * The bulk remover for transferring {@code sq} to {@code q}.
      */
-    private final Predicate<UserThreadScheduler> bulkRemover = q::add;
+    private final Predicate<ThreadScheduler> bulkRemover = q::add;
     /**
      * The delay queue for timed sleep (patched JDKs only).
      */
@@ -214,36 +204,31 @@ public final class EventLoopThread extends JBossThread implements Executor {
                     waitTime = Math.max(1L, dt.deadline - currentNanos);
                 }
             }
-            UserThreadScheduler removed = q.poll();
+            ThreadScheduler removed = q.poll();
             if (removed == null) {
-                waitTimeHandle.setOpaque(this, waitTime);
-                // mark event handler ready
-                elts.makeReady();
-                // call event handler (possibly early)
-                elts.run();
+                // all threads are parked, even the event loop, so just wait around
+                LockSupport.park();
             } else {
-                // update for next q operation without hitting nanoTime over and over
-                cmpNanos = removed.waitingSince();
-                removed.run();
-                // now, see if we reenter the event loop right away or not
-                if (elts.ready()) {
-                    waitTimeHandle.setOpaque(this, 0L);
-                    // call event handler
-                    elts.run();
+                if (removed == elts) {
+                    // configure the wait time
+                    elts.setWaitTime(waitTime);
                 }
-                // otherwise, continue processing tasks
+                // update for next q operation without hitting nanoTime over and over
+                cmpNanos = removed.waitingSinceTime();
+                removed.run();
             }
         }
     }
 
-    void enqueueFromOutside(final UserThreadScheduler command) {
-        sq.add(command);
-        eventLoop().wakeup();
-    }
-
-    void enqueueLocal(final UserThreadScheduler command) {
-        assert Thread.currentThread() == this || Access.currentCarrier() == this;
-        q.add(command);
+    void enqueue(final ThreadScheduler continuation) {
+        Thread ct = Thread.currentThread();
+        if (ct == this || Access.currentCarrier() == this) {
+            q.add(continuation);
+        } else {
+            sq.add(continuation);
+            LockSupport.unpark(this);
+            eventLoop().wakeup();
+        }
     }
 
     /**
@@ -254,29 +239,22 @@ public final class EventLoopThread extends JBossThread implements Executor {
      * @param o2 the second thread scheduler (must not be {@code null})
      * @return the comparison result
      */
-    private int compare(UserThreadScheduler o1, UserThreadScheduler o2) {
+    private int compare(ThreadScheduler o1, ThreadScheduler o2) {
         long cmpNanos = this.cmpNanos;
-        return Long.compare(o2.waitTime(cmpNanos), o1.waitTime(cmpNanos));
+        return Long.compare(o2.waitingSince(cmpNanos), o1.waitingSince(cmpNanos));
     }
 
     ScheduledFuture<?> schedule(final Runnable command, final long nanos) {
+        // it is expected that this will only be called locally
         Thread ct = Thread.currentThread();
-        if (ct == this || ct.isVirtual() && Access.currentCarrier() == this) {
-            DelayedTask<Void> task = new DelayedTask<>(command, System.nanoTime() + nanos);
-            dq.add(task);
-            return task;
-        } else {
-            // not expected
-            throw new IllegalStateException();
-        }
+        assert ct == EventLoopThread.this;
+        DelayedTask<Object> dt = new DelayedTask<>(command, System.nanoTime() + nanos);
+        dq.add(dt);
+        return dt;
     }
 
     Dispatcher dispatcher() {
         return dispatcher;
-    }
-
-    long waitTime() {
-        return (long) waitTimeHandle.getOpaque(this);
     }
 
     private final class DelayedTask<V> implements ScheduledFuture<V>, Runnable {
@@ -303,7 +281,11 @@ public final class EventLoopThread extends JBossThread implements Executor {
         }
 
         public boolean cancel(final boolean mayInterruptIfRunning) {
-            // unsupported
+            Thread ct = Thread.currentThread();
+            if (ct == EventLoopThread.this || ct.isVirtual() && Access.currentCarrier() == EventLoopThread.this) {
+                return dq.remove(this);
+            }
+            // else unsupported
             return false;
         }
 
@@ -332,20 +314,11 @@ public final class EventLoopThread extends JBossThread implements Executor {
 
     private class EventLoopDispatcher extends Dispatcher {
         void execute(final UserThreadScheduler continuation) {
-            Thread ct = Thread.currentThread();
-            if (ct == EventLoopThread.this || Access.currentCarrier() == EventLoopThread.this) {
-                enqueueLocal(continuation);
-            } else {
-                enqueueFromOutside(continuation);
-            }
+            enqueue(continuation);
         }
 
         ScheduledFuture<?> schedule(final Runnable task, final long nanos) {
-            // it is expected that this will only be called locally
-            assert Thread.currentThread() == EventLoopThread.this;
-            DelayedTask<Object> dt = new DelayedTask<>(task, System.nanoTime() + nanos);
-            dq.add(dt);
-            return dt;
+            return EventLoopThread.this.schedule(task, nanos);
         }
     }
 }

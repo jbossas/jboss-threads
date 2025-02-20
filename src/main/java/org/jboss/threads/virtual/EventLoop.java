@@ -1,7 +1,5 @@
 package org.jboss.threads.virtual;
 
-import java.util.concurrent.locks.LockSupport;
-
 import io.smallrye.common.annotation.Experimental;
 
 /**
@@ -28,12 +26,8 @@ public abstract class EventLoop {
      * This method will be called in a loop (the event loop, in fact).
      * After each invocation of this method, up to one other waiting thread will be continued.
      * Since this generally would lead to busy-looping,
-     * the implementation of this method <em>should</em> {@linkplain LockSupport#parkNanos(long) park} for some amount of time before returning.
-     * While the event loop method is parked,
-     * other threads will be allowed to run.
-     * If the set of ready threads is exhausted before that time elapses,
-     * the event loop thread will automatically be unparked,
-     * allowing the loop to be re-entered from the top to wait for ready events.
+     * the implementation of this method <em>should</em>
+     * {@linkplain Scheduler#yieldNanos(long) yield for some amount of time} before returning to allow other threads to run.
      * <p>
      * Note that {@linkplain Thread#sleep(long) sleeping} instead of parking may cause latency spikes,
      * so it is not recommended.

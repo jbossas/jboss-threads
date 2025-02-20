@@ -1,9 +1,7 @@
 package org.jboss.threads.virtual;
 
-import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -24,7 +22,6 @@ import org.jboss.threads.EnhancedQueueExecutor;
 @Experimental("Experimental virtual thread support")
 public final class Scheduler implements Executor {
     private final EnhancedQueueExecutor blockingPool;
-    private final List<EventLoopThread> eventLoopThreads = new CopyOnWriteArrayList<>();
     private final Container container = new Container();
     private final AtomicInteger eventLoopIdx = new AtomicInteger(1);
     private final AtomicLong threadIdx = new AtomicLong(1);
@@ -233,12 +230,18 @@ public final class Scheduler implements Executor {
         }
     }
 
-    EnhancedQueueExecutor blockingPool() {
-        return blockingPool;
-    }
-
-    List<EventLoopThread> eventLoopThreads() {
-        return eventLoopThreads;
+    /**
+     * Yield execution to any task is already waiting or will start waiting within the next {@code nanos} nanoseconds.
+     * If no tasks remain within the given criteria, the current thread will resume.
+     *
+     * @param nanos the number of nanoseconds to attempt to yield for
+     */
+    public static void yieldNanos(long nanos) {
+        Thread thread = Thread.currentThread();
+        if (thread.isVirtual() && Access.schedulerOf(thread) instanceof ThreadScheduler ts) {
+            ts.delayBy(Math.max(0, nanos));
+        }
+        Thread.yield();
     }
 
     ThreadContainer container() {
@@ -254,7 +257,7 @@ public final class Scheduler implements Executor {
         final Set<Thread> threads = ConcurrentHashMap.newKeySet();
 
         private Container() {
-            super(false);
+            super(true);
         }
 
         public void onStart(final Thread thread) {
