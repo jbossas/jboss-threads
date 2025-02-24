@@ -119,7 +119,7 @@ public final class EventLoopThread extends JBossThread implements Executor {
                             q.addFirst(this);
                         }
                         // wait for a new task
-                        Scheduler.parkAndResumeOn(EventLoopThread.this);
+                        VirtualThreads.parkAndResumeOn(EventLoopThread.this);
                     }
                 }
             }

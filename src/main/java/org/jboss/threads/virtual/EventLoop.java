@@ -27,7 +27,7 @@ public abstract class EventLoop {
      * After each invocation of this method, up to one other waiting thread will be continued.
      * Since this generally would lead to busy-looping,
      * the implementation of this method <em>should</em>
-     * {@linkplain Scheduler#yieldNanos(long) yield for some amount of time} before returning to allow other threads to run.
+     * {@linkplain VirtualThreads#yieldNanos(long) yield for some amount of time} before returning to allow other threads to run.
      * <p>
      * Note that {@linkplain Thread#sleep(long) sleeping} instead of parking may cause latency spikes,
      * so it is not recommended.
