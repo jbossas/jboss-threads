@@ -1,5 +1,7 @@
 package org.jboss.threads.virtual;
 
+import java.util.concurrent.locks.LockSupport;
+
 import io.smallrye.common.annotation.Experimental;
 
 /**
@@ -29,7 +31,7 @@ public abstract class EventLoop {
      * the implementation of this method <em>should</em>
      * {@linkplain VirtualThreads#yieldNanos(long) yield for some amount of time} before returning to allow other threads to run.
      * <p>
-     * Note that {@linkplain Thread#sleep(long) sleeping} instead of parking may cause latency spikes,
+     * Note that {@linkplain Thread#sleep(long) sleeping} or {@linkplain LockSupport#park() parking} may cause latency spikes,
      * so it is not recommended.
      * <p>
      * This method should only be called from the event loop virtual thread.
