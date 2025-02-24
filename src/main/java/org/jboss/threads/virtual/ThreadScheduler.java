@@ -81,41 +81,14 @@ abstract class ThreadScheduler implements ScheduledExecutorService, Runnable {
     /**
      * {@return the number of nanoseconds that this thread has been waiting for}
      * The higher the waiting-since time, the higher priority a thread will have.
+     * This value may be negative if the wait time includes a delay.
      *
      * @param current the current time
      */
     long waitingSince(long current) {
         long delay = (long) delayHandle.getOpaque(this);
-        // delay is always 0 or positive
-        long nanos = Math.max(0, current - waitingSinceTime) - delay;
-        // nanos may be negative now
-        int priority = priority();
-        if (priority < Thread.NORM_PRIORITY) {
-            // lower priority, so make nanos less positive or more negative
-            if (nanos < 0) {
-                int shift = priority - Thread.NORM_PRIORITY;
-                if (shift > Long.numberOfLeadingZeros(- nanos)) {
-                    nanos = Long.MIN_VALUE;
-                } else {
-                    nanos <<= shift;
-                }
-            } else {
-                nanos >>= Thread.NORM_PRIORITY - priority;
-            }
-        } else if (priority > Thread.NORM_PRIORITY) {
-            // higher priority, so make nanos more positive or less negative
-            if (nanos < 0) {
-                nanos >>= Thread.NORM_PRIORITY - priority;
-            } else {
-                int shift = priority - Thread.NORM_PRIORITY;
-                if (shift > Long.numberOfLeadingZeros(nanos)) {
-                    nanos = Long.MAX_VALUE;
-                } else {
-                    nanos <<= shift;
-                }
-            }
-        }
-        return nanos;
+        // delay is always 0 or positive, so result may be negative
+        return Math.max(0, current - waitingSinceTime) - delay;
     }
 
     /**

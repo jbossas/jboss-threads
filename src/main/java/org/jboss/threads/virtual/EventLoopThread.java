@@ -24,6 +24,10 @@ import org.jboss.threads.JBossThread;
  */
 public final class EventLoopThread extends JBossThread implements Executor {
     /**
+     * The number of nanoseconds to offset the wait time by, per priority point.
+     */
+    private static final long PRIORITY_BIAS = 50_000L;
+    /**
      * The virtual thread which runs the event handler.
      */
     private final EventLoopThreadScheduler elts;
@@ -243,7 +247,17 @@ public final class EventLoopThread extends JBossThread implements Executor {
      */
     private int compare(ThreadScheduler o1, ThreadScheduler o2) {
         long cmpNanos = this.cmpNanos;
-        return Long.compare(o2.waitingSince(cmpNanos), o1.waitingSince(cmpNanos));
+
+        // with priority, we have a potentially greater-than-64-bit number
+        long w1 = o1.waitingSince(cmpNanos);
+        int s1 = Thread.NORM_PRIORITY - o1.priority();
+        w1 += s1 * PRIORITY_BIAS;
+
+        long w2 = o2.waitingSince(cmpNanos);
+        int s2 = Thread.NORM_PRIORITY - o2.priority();
+        w2 += s2 * PRIORITY_BIAS;
+
+        return Long.compare(w2, w1);
     }
 
     ScheduledFuture<?> schedule(final Runnable command, final long nanos) {
