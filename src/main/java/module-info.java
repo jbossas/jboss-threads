@@ -3,6 +3,7 @@ module org.jboss.threads {
     requires jdk.unsupported;
     requires org.jboss.logging;
     requires static org.jboss.logging.annotations;
+    requires static org.graalvm.nativeimage;
     requires org.wildfly.common;
     requires io.smallrye.common.annotation;
     requires io.smallrye.common.constraint;
