@@ -3,6 +3,9 @@ package org.jboss.threads;
 import static java.lang.invoke.MethodHandles.*;
 
 import java.time.Duration;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 import org.jboss.logging.BasicLogger;
 import org.jboss.logging.Logger;
@@ -30,11 +33,14 @@ interface Messages extends BasicLogger {
 
 //    @Message(id = 2, value = "Task limit reached")
 
-//    @Message(id = 3, value = "Operation timed out")
+    @Message(id = 3, value = "Operation timed out")
+    TimeoutException operationTimedOut();
 
-//    @Message(id = 4, value = "Operation was cancelled")
+    @Message(id = 4, value = "Operation was cancelled")
+    CancellationException operationCancelled();
 
-//    @Message(id = 5, value = "Operation failed")
+    @Message(id = 5, value = "Operation failed")
+    ExecutionException operationFailed(@Cause Throwable cause);
 
 //    @Message(id = 6, value = "Unable to add new thread to the running set")
 
