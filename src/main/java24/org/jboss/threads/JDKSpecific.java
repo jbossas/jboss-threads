@@ -24,8 +24,8 @@ final class JDKSpecific {
         static {
             try {
                 MethodHandles.Lookup threadLookup = MethodHandles.privateLookupIn(Thread.class, MethodHandles.lookup());
-                setThreadLocalsHandle = threadLookup.unreflectVarHandle(Thread.class.getDeclaredField("threadLocals")).toMethodHandle(VarHandle.AccessMode.SET).asType(MethodType.methodType(void.class, Object.class));
-                setInheritableThreadLocalsHandle = threadLookup.unreflectVarHandle(Thread.class.getDeclaredField("inheritableThreadLocals")).toMethodHandle(VarHandle.AccessMode.SET).asType(MethodType.methodType(void.class, Object.class));
+                setThreadLocalsHandle = threadLookup.unreflectVarHandle(Thread.class.getDeclaredField("threadLocals")).toMethodHandle(VarHandle.AccessMode.SET).asType(MethodType.methodType(void.class, Thread.class, Object.class));
+                setInheritableThreadLocalsHandle = threadLookup.unreflectVarHandle(Thread.class.getDeclaredField("inheritableThreadLocals")).toMethodHandle(VarHandle.AccessMode.SET).asType(MethodType.methodType(void.class, Thread.class, Object.class));
             } catch (IllegalAccessException e) {
                 Module myModule = ThreadAccess.class.getModule();
                 String myName = myModule.isNamed() ? myModule.getName() : "ALL-UNNAMED";
@@ -39,8 +39,8 @@ final class JDKSpecific {
         static void clearThreadLocals() {
             final Thread thread = Thread.currentThread();
             try {
-                setThreadLocalsHandle.invokeExact(thread, null);
-                setInheritableThreadLocalsHandle.invokeExact(thread, null);
+                setThreadLocalsHandle.invokeExact(thread, (Object) null);
+                setInheritableThreadLocalsHandle.invokeExact(thread, (Object) null);
             } catch (RuntimeException | Error e) {
                 throw e;
             } catch (Throwable t) {
